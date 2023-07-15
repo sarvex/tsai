@@ -46,8 +46,7 @@ class WaveBlock(Module):
         return lp_out, all_out
     
     def create_W(self, P, is_l, is_comp=False):
-        if is_l: filter_list = self.l_filter
-        else: filter_list = self.h_filter
+        filter_list = self.l_filter if is_l else self.h_filter
         list_len = len(filter_list)
         max_epsilon = np.min(np.abs(filter_list))
         if is_comp: weight_np = np.zeros((P, P))

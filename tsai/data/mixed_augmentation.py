@@ -55,7 +55,7 @@ class MixUp1d(MixHandler1d):
         xb1 = self.x[shuffle]
         self.learn.xb = L(xb1, self.xb).map_zip(torch.lerp, weight=unsqueeze(self.lam, n=self.x.ndim - 1))
         if self.labeled:
-            self.yb1 = tuple((self.y[shuffle], ))
+            self.yb1 = (self.y[shuffle], )
             if not self.stack_y: self.learn.yb = L(self.yb1, self.yb).map_zip(torch.lerp, weight=unsqueeze(self.lam, n=self.y.ndim - 1))    
                 
 MixUp1D = MixUp1d
@@ -78,7 +78,7 @@ class CutMix1d(MixHandler1d):
         self.learn.xb[0][..., x1:x2] = xb1[..., x1:x2]
         self.lam = (1 - (x2 - x1) / float(seq_len)).item()
         if self.labeled:
-            self.yb1 = tuple((self.y[shuffle], ))
+            self.yb1 = (self.y[shuffle], )
             if not self.stack_y:
                 self.learn.yb = tuple(L(self.yb1, self.yb).map_zip(torch.lerp, weight=unsqueeze(self.lam, n=self.y.ndim - 1)))
 

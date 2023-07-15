@@ -32,7 +32,7 @@ class ROCKET(nn.Module):
         device = ifnone(device, default_device())
         kss = [ks for ks in kss if ks < seq_len]
         convs = nn.ModuleList()
-        for i in range(n_kernels):
+        for _ in range(n_kernels):
             ks = np.random.choice(kss)
             dilation = 2**np.random.uniform(0, np.log2((seq_len - 1) // (ks - 1)))
             padding = int((ks - 1) * dilation // 2) if np.random.randint(2) == 1 else 0
@@ -55,8 +55,7 @@ class ROCKET(nn.Module):
             out = self.convs[i](x).cpu()
             _max = out.max(dim=-1)[0]
             _ppv = torch.gt(out, 0).sum(dim=-1).float() / out.shape[-1]
-            _output.append(_max)
-            _output.append(_ppv)
+            _output.extend((_max, _ppv))
         return torch.cat(_output, dim=1)
 
 # %% ../../nbs/054_models.ROCKET_Pytorch.ipynb 5
@@ -67,7 +66,7 @@ def create_rocket_features(dl, model, verbose=False):
     """
     _x_out = []
     _y_out = []
-    for i,(xb,yb) in enumerate(progress_bar(dl, display=verbose, leave=False)):
+    for xb, yb in progress_bar(dl, display=verbose, leave=False):
         _x_out.append(model(xb).cpu())
         _y_out.append(yb.cpu())
     return torch.cat(_x_out).numpy(), torch.cat(_y_out).numpy()

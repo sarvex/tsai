@@ -52,8 +52,7 @@ class ScaledDotProductAttention(Module):
         # MatMul (attn, v)
         context = torch.matmul(attn, v)                                # context: [bs x n_heads x q_len x d_v]
 
-        if self.res_attention: return context, attn, scores
-        else: return context, attn
+        return (context, attn, scores) if self.res_attention else (context, attn)
 
 
 class Attention(Module):
@@ -89,10 +88,7 @@ class Attention(Module):
         x = x.permute(0, 2, 1, 3).reshape(bs, -1, h * d)
 
         x = self.to_out(x)
-        if self.res_attention:
-            return x, scores
-        else: 
-            return x
+        return (x, scores) if self.res_attention else x
 
 
 class GEGLU(Module):
@@ -152,11 +148,15 @@ class TSPerceiver(Module):
                  share_weights=True, cross_n_heads=1, self_n_heads=8, d_head=None, attn_dropout=0., fc_dropout=0., concat_pool=False):
         
         d_context = ifnone(d_context, d_latent)
-        
+
         # Embedding
         self.to_ts_emb = nn.Linear(c_in, d_context)
         self.to_cat_emb = nn.ModuleList([nn.Embedding(s, d_context) for s in cat_szs]) if cat_szs else None
-        self.to_cont_emb = nn.ModuleList([nn.Linear(1, d_context) for i in range(n_cont)]) if n_cont else None
+        self.to_cont_emb = (
+            nn.ModuleList([nn.Linear(1, d_context) for _ in range(n_cont)])
+            if n_cont
+            else None
+        )
 
         self.latent_array = nn.Parameter(torch.zeros(1, n_latents, d_context)) # N = q_len = indices = n_latents  
 
@@ -166,7 +166,7 @@ class TSPerceiver(Module):
         # self.cont_pos_enc = nn.Parameter(torch.zeros(1, 1, d_context)) if n_cont else None 
         self.ts_pos_enc = nn.Parameter(torch.zeros(1, 1, 1))
         self.cat_pos_enc = nn.Parameter(torch.zeros(1, 1, 1)) if cat_szs else None
-        self.cont_pos_enc = nn.Parameter(torch.zeros(1, 1, 1)) if n_cont else None 
+        self.cont_pos_enc = nn.Parameter(torch.zeros(1, 1, 1)) if n_cont else None
         # self.pos_enc = nn.Parameter(torch.zeros(1, seq_len + (len(cat_szs) if cat_szs else 0) + n_cont, d_context))
         pos_enc = torch.linspace(-1, 1, seq_len + (len(cat_szs) if cat_szs else 0) + n_cont).unsqueeze(0).unsqueeze(-1).repeat(1, 1, d_context)
         self.pos_enc = nn.Parameter(pos_enc, requires_grad=False)
@@ -205,18 +205,16 @@ class TSPerceiver(Module):
             x_cont += self.cont_pos_enc
             context = torch.cat([context, x_cont], 1)
         context += self.pos_enc
-        
+
         # Latent array
         x = self.latent_array.repeat(context.shape[0], 1, 1)
-        
+
         # Cross-attention & Latent transformer
-        for i, attn in enumerate(self.attn):
+        for attn in self.attn:
             x = attn[0](x, context=context) + x # cross-attention
             if self.self_per_cross_attn != 0:
                 x = attn[1](x) + x              # latent transformer
 
         x = x.transpose(1,2)
-        
-        #Head
-        out = self.head(x)
-        return out
+
+        return self.head(x)

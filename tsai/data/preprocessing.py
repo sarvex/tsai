@@ -139,9 +139,9 @@ class TSStandardize(Transform):
         if by_var: drop_axes.append(1)
         if by_step: drop_axes.append(2)
         self.exc_vars = exc_vars
-        self.axes = tuple([ax for ax in (0, 1, 2) if ax not in drop_axes])
+        self.axes = tuple(ax for ax in (0, 1, 2) if ax not in drop_axes)
         if by_var and is_listy(by_var):
-            self.list_axes = tuple([ax for ax in (0, 1, 2) if ax not in drop_axes]) + (1,)
+            self.list_axes = tuple(ax for ax in (0, 1, 2) if ax not in drop_axes) + (1,)
         self.use_single_batch = use_single_batch
         self.verbose = verbose
         if self.mean is not None or self.std is not None:
@@ -201,8 +201,7 @@ class TSStandardize(Transform):
         return (o - self.mean) / self.std
 
     def decodes(self, o:TSTensor):
-        if self.mean is None or self.std is None: return o
-        return o * self.std + self.mean
+        return o if self.mean is None or self.std is None else o * self.std + self.mean
 
     def __repr__(self): return f'{self.__class__.__name__}(by_sample={self.by_sample}, by_var={self.by_var}, by_step={self.by_step})'
 
@@ -241,9 +240,9 @@ class TSNormalize(Transform):
         if by_sample: drop_axes.append(0)
         if by_var: drop_axes.append(1)
         if by_step: drop_axes.append(2)
-        self.axes = tuple([ax for ax in (0, 1, 2) if ax not in drop_axes])
+        self.axes = tuple(ax for ax in (0, 1, 2) if ax not in drop_axes)
         if by_var and is_listy(by_var):
-            self.list_axes = tuple([ax for ax in (0, 1, 2) if ax not in drop_axes]) + (1,)
+            self.list_axes = tuple(ax for ax in (0, 1, 2) if ax not in drop_axes) + (1,)
         self.clip_values = clip_values
         self.use_single_batch = use_single_batch
         self.verbose = verbose
@@ -384,15 +383,16 @@ class TSDropFeatByKey(Transform):
         self.key_var, self.p = key_var, p
         self.sel_vars, self.sel_steps = sel_vars, sel_steps
         if p.shape[-1] == 1:
-            if isinstance(self.sel_vars, slice) or isinstance(self.sel_steps, slice):
-                self._idxs = [slice(None), slice(None), slice(None), 0]
-            else:
-                self._idxs = [slice(None), 0, slice(None), slice(None), 0]
+            self._idxs = (
+                [slice(None), slice(None), slice(None), 0]
+                if isinstance(self.sel_vars, slice)
+                or isinstance(self.sel_steps, slice)
+                else [slice(None), 0, slice(None), slice(None), 0]
+            )
+        elif isinstance(self.sel_vars, slice) or isinstance(self.sel_steps, slice):
+            self._idxs = self._idxs = [slice(None), np.arange(p.shape[-1]), slice(None), np.arange(p.shape[-1])]
         else:
-            if isinstance(self.sel_vars, slice) or isinstance(self.sel_steps, slice):
-                self._idxs = self._idxs = [slice(None), np.arange(p.shape[-1]), slice(None), np.arange(p.shape[-1])]
-            else:
-                self._idxs = [slice(None), 0, np.arange(p.shape[-1]), slice(None), np.arange(p.shape[-1])]
+            self._idxs = [slice(None), 0, np.arange(p.shape[-1]), slice(None), np.arange(p.shape[-1])]
 
     def encodes(self, o:TSTensor):
         o_slice = o[:, self.sel_vars, self.sel_steps]
@@ -533,15 +533,12 @@ def get_stats_with_uncertainty(o, sel_vars=None, sel_vars_zero_mean_unit_var=Fal
     oi_mean = []
     oi_std = []
     start = 0
-    for i in progress_bar(range(n_trials)):
+    for _ in progress_bar(range(n_trials)):
         idxs = random_idxs[start:start + bs]
         start += bs
         if hasattr(o, 'oindex'):
             oi = o.index[idxs]
-        if hasattr(o, 'compute'):
-            oi = o[idxs].compute()
-        else:
-            oi = o[idxs]
+        oi = o[idxs].compute() if hasattr(o, 'compute') else o[idxs]
         oi_mean.append(np.nanmean(oi.astype('float32'), axis=axis, keepdims=True))
         oi_std.append(np.nanstd(oi.astype('float32'), axis=axis, keepdims=True))
     oi_mean = np.concatenate(oi_mean)
@@ -645,7 +642,6 @@ class TSCyclicalPosition(Transform):
         if self.cyclical_var is None:
             sin, cos = sincos_encoding(seq_len, device=o.device)
             output = torch.cat([o, sin.reshape(1,1,-1).repeat(bs,1,1), cos.reshape(1,1,-1).repeat(bs,1,1)], 1)
-            return output
         else:
             sin = torch.sin(o[:, [self.cyclical_var]]/seq_len * 2 * np.pi)
             cos = torch.cos(o[:, [self.cyclical_var]]/seq_len * 2 * np.pi)
@@ -654,7 +650,8 @@ class TSCyclicalPosition(Transform):
                 output = torch.cat([o[:, exc_vars], sin, cos], 1)
             else:
                 output = torch.cat([o, sin, cos], 1)
-            return output
+
+        return output
 
 # %% ../../nbs/009_data.preprocessing.ipynb 54
 class TSLinearPosition(Transform):
@@ -685,10 +682,9 @@ class TSLinearPosition(Transform):
             lin = (linear_var - self.lin_range[0]) / (self.lin_range[1] - self.lin_range[0])
             if self.drop_var:
                 exc_vars = np.isin(np.arange(nvars), self.linear_var, invert=True)
-                output = torch.cat([o[:, exc_vars], lin], 1)
+                return torch.cat([o[:, exc_vars], lin], 1)
             else:
-                output = torch.cat([o, lin], 1)
-            return output
+                return torch.cat([o, lin], 1)
         return output
 
 # %% ../../nbs/009_data.preprocessing.ipynb 57
@@ -721,10 +717,7 @@ class TSPositionGaps(Transform):
         super().__init__(**kwargs)
 
     def encodes(self, o: TSTensor):
-        if self.sel_vars:
-            gaps = self.gap_fn(o[:, self.sel_vars])
-        else:
-            gaps = self.gap_fn(o)
+        gaps = self.gap_fn(o[:, self.sel_vars]) if self.sel_vars else self.gap_fn(o)
         return torch.cat([o, gaps], 1)
 
 # %% ../../nbs/009_data.preprocessing.ipynb 61
@@ -841,10 +834,9 @@ class TSOneHotEncode(Transform):
             ohe_var[:, [i + self.add_na]] = (o_var == l).to(ohe_var.dtype)
         if self.drop_var:
             exc_vars = torch.isin(torch.arange(o.shape[1], device=o.device), self.sel_var, invert=True)
-            output = torch.cat([o[:, exc_vars], ohe_var], 1)
+            return torch.cat([o[:, exc_vars], ohe_var], 1)
         else:
-            output = torch.cat([o, ohe_var], 1)
-        return output
+            return torch.cat([o, ohe_var], 1)
 
 # %% ../../nbs/009_data.preprocessing.ipynb 77
 class TSPosition(Transform):
@@ -889,20 +881,19 @@ class PatchEncoder():
         self.value = value
         self.merge_dims = merge_dims
 
-        assert reduction in ["none", "mean", "min", "max", "mode"]
+        assert reduction in {"none", "mean", "min", "max", "mode"}
         self.reduction = reduction
         self.reduction_dim = reduction_dim
         self.swap_dims = swap_dims
-        
+
         if seq_len is None:
             self.pad_size = 0
         elif self.seq_len < self.patch_len:
             self.pad_size = self.patch_len - self.seq_len
+        elif (self.seq_len % self.patch_len) % self.patch_stride == 0:
+            self.pad_size = 0
         else:
-            if (self.seq_len % self.patch_len) % self.patch_stride == 0:
-                self.pad_size = 0
-            else:
-                self.pad_size = self.patch_stride - (self.seq_len % self.patch_len) % self.patch_stride
+            self.pad_size = self.patch_stride - (self.seq_len % self.patch_len) % self.patch_stride
 
     def __call__(self, 
         x: torch.Tensor # 3d input tensor with shape [batch size, sequence length, channels]
@@ -1071,7 +1062,7 @@ class TSShrinkDataFrame(BaseEstimator, TransformerMixin):
 
 
 def object2date(x, format=None):
-    if not x.dtype == np.dtype('object'): return x
+    if x.dtype != np.dtype('object'): return x
     try:
         return pd.to_datetime(x, format=format)
     except:
@@ -1111,8 +1102,9 @@ class TSOneHotEncoder(BaseEstimator, TransformerMixin):
             output = self.ohe_tfm.transform(X[self.columns]).toarray().astype(self.dtype)
         new_cols = []
         for i,col in enumerate(self.columns):
-            for cats in self.ohe_tfm.categories_[i]:
-                new_cols.append(f"{str(col)}_{str(cats)}")
+            new_cols.extend(
+                f"{str(col)}_{str(cats)}" for cats in self.ohe_tfm.categories_[i]
+            )
         X[new_cols] = output
         self.new_cols = new_cols
         if self.drop: X = X.drop(self.columns, axis=1)
@@ -1162,11 +1154,7 @@ class TSCategoricalEncoder(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None, **fit_params):
         assert isinstance(X, (pd.DataFrame, pd.Series))
         if not self.columns:
-            if isinstance(X, pd.DataFrame):
-                self.columns = X.columns
-            else:
-                self.columns = X.name
-        
+            self.columns = X.columns if isinstance(X, pd.DataFrame) else X.name
         idxs = fit_params.get("idxs", slice(None))
         if self.categories is None:
             _categories = []
@@ -1187,10 +1175,7 @@ class TSCategoricalEncoder(BaseEstimator, TransformerMixin):
 
     def transform(self, X, **kwargs):
         assert isinstance(X, (pd.DataFrame, pd.Series))
-        if isinstance(X, pd.DataFrame):
-            columns = X.columns
-        else:
-            columns = X.name
+        columns = X.columns if isinstance(X, pd.DataFrame) else X.name
         for column, categories in zip(self.columns, self.categories):
             if column not in columns:
                 continue
@@ -1221,15 +1206,17 @@ class TSCategoricalEncoder(BaseEstimator, TransformerMixin):
                 name += [column]
                 if self.suffix: name += [self.suffix]
                 new_col = '_'.join(name)
-                if self.add_na:
-                    X.loc[:, new_col] = np.array(['#na#'] + list(categories.categories))[X.loc[:, new_col].astype(int)]
-                else:
-                    X.loc[:, new_col] = categories.categories[X.loc[:, new_col].astype(int)]
+                X.loc[:, new_col] = (
+                    np.array(['#na#'] + list(categories.categories))[
+                        X.loc[:, new_col].astype(int)
+                    ]
+                    if self.add_na
+                    else categories.categories[X.loc[:, new_col].astype(int)]
+                )
+        elif self.add_na:
+            X = pd.Series(np.array(['#na#'] + list(self.categories[0].categories))[X], name=X.name, index=X.index)
         else:
-            if self.add_na:
-                X = pd.Series(np.array(['#na#'] + list(self.categories[0].categories))[X], name=X.name, index=X.index)
-            else:
-                X = pd.Series(self.categories[0].categories[X], name=X.name, index=X.index)
+            X = pd.Series(self.categories[0].categories[X], name=X.name, index=X.index)
         return X
 
     def to_categorical(self, categories):
@@ -1313,20 +1300,25 @@ class TSDateTimeEncoder(BaseEstimator, TransformerMixin):
         if not self.datetime_columns:
             self.datetime_columns = X.columns
         self.prefixes = []
-        for dt_column in self.datetime_columns: 
-            self.prefixes.append(re.sub('[Dd]ate$', '', dt_column) if self.prefix is None else self.prefix)
+        self.prefixes.extend(
+            re.sub('[Dd]ate$', '', dt_column)
+            if self.prefix is None
+            else self.prefix
+            for dt_column in self.datetime_columns
+        )
         return self
         
     def transform(self, X, **kwargs):
         assert isinstance(X, pd.DataFrame)
-        
+
         for dt_column,prefix in zip(self.datetime_columns,self.prefixes): 
             make_date(X, dt_column)
             field = X[dt_column]
 
             # Pandas removed `dt.week` in v1.1.10
             week = field.dt.isocalendar().week.astype(field.dt.day.dtype) if hasattr(field.dt, 'isocalendar') else field.dt.week
-            for n in self.attr: X[prefix + "_" + n] = getattr(field.dt, n.lower()) if n != 'Week' else week
+            for n in self.attr:
+                X[f"{prefix}_{n}"] = getattr(field.dt, n.lower()) if n != 'Week' else week
             if self.drop: X = X.drop(self.datetime_columns, axis=1)
         return X
 
@@ -1372,15 +1364,19 @@ class TSApplyFunction(BaseEstimator, TransformerMixin):
     def transform(self, X, **kwargs):
         assert isinstance(X, pd.DataFrame)
         if self.groups:
-            if self.columns:
-                X = X.groupby(self.groups, group_keys=self.group_keys)[self.columns].apply(lambda x: self.function(x))
-            else:
-                X = X.groupby(self.groups, group_keys=self.group_keys).apply(lambda x: self.function(x))
+            X = (
+                X.groupby(self.groups, group_keys=self.group_keys)[
+                    self.columns
+                ].apply(lambda x: self.function(x))
+                if self.columns
+                else X.groupby(self.groups, group_keys=self.group_keys).apply(
+                    lambda x: self.function(x)
+                )
+            )
+        elif self.columns:
+            X[self.columns] = X[self.columns].apply(lambda x: self.function(x), axis=self.axis)
         else:
-            if self.columns:
-                X[self.columns] = X[self.columns].apply(lambda x: self.function(x), axis=self.axis)
-            else:
-                X = X.apply(lambda x: self.function(x), axis=self.axis)
+            X = X.apply(lambda x: self.function(x), axis=self.axis)
         if self.reset_index: 
             X = X.reset_index(drop=self.drop)
         return X
@@ -1458,9 +1454,7 @@ class TSSelectColumns(TransformerMixin, BaseEstimator):
         
     def transform(self, X, idxs=None, **kwargs):
         assert isinstance(X, (pd.DataFrame, pd.Series))
-        if idxs is not None:
-            return X.loc[idxs, self.columns]
-        return X[self.columns].copy()
+        return X[self.columns].copy() if idxs is None else X.loc[idxs, self.columns]
 
     def inverse_transform(self, X, **kwargs):
         return X
@@ -1552,21 +1546,16 @@ class TSStandardScaler(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None, **fit_params):
         assert isinstance(X, (pd.DataFrame, pd.Series))
         if not self.columns:
-            if isinstance(X, pd.DataFrame):
-                self.columns = X.columns
-            else:
-                self.columns = X.name
+            self.columns = X.columns if isinstance(X, pd.DataFrame) else X.name
         idxs = fit_params.get("idxs", slice(None))
         if self.mean is None:
             self.mean = []
-            for c in self.columns:
-                self.mean.append(X.loc[idxs, c].mean())
+            self.mean.extend(X.loc[idxs, c].mean() for c in self.columns)
         else:
             assert len(self.mean) == len(self.columns)
         if self.std is None:
             self.std = []
-            for c in self.columns:
-                self.std.append(X.loc[idxs, c].std())
+            self.std.extend(X.loc[idxs, c].std() for c in self.columns)
         else:
             assert len(self.std) == len(self.columns)
         return self
@@ -1595,22 +1584,17 @@ class TSRobustScaler(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None, **fit_params):
         assert isinstance(X, (pd.DataFrame, pd.Series))
         if not self.columns:
-            if isinstance(X, pd.DataFrame):
-                self.columns = X.columns
-            else:
-                self.columns = X.name
+            self.columns = X.columns if isinstance(X, pd.DataFrame) else X.name
         idxs = fit_params.get("idxs", slice(None))
-        
-        self.median = []
-        for c in self.columns:
-            self.median.append(np.nanpercentile(X.loc[idxs, c], 50))
 
+        self.median = []
+        self.median.extend(np.nanpercentile(X.loc[idxs, c], 50) for c in self.columns)
         self.iqr = []
         for c in self.columns:
             q1 = np.nanpercentile(X.loc[idxs, c], self.quantile_range[0])
             q3 = np.nanpercentile(X.loc[idxs, c], self.quantile_range[1])
             self.iqr.append(q3 - q1)
-                
+
         return self
 
     def transform(self, X, **kwargs):
@@ -1703,10 +1687,7 @@ class TSFillMissing(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None, **fit_params):
         assert isinstance(X, (pd.DataFrame, pd.Series))
         if not self.columns:
-            if isinstance(X, pd.DataFrame):
-                self.columns = X.columns
-            else:
-                self.columns = X.name
+            self.columns = X.columns if isinstance(X, pd.DataFrame) else X.name
         return self
         
     def transform(self, X, **kwargs):
@@ -1751,27 +1732,22 @@ class Preprocessor():
         self.preprocessor = preprocessor(**kwargs)
         
     def fit(self, o): 
-        if isinstance(o, pd.Series): o = o.values.reshape(-1,1)
-        else: o = o.reshape(-1,1)
+        o = o.values.reshape(-1,1) if isinstance(o, pd.Series) else o.reshape(-1,1)
         self.fit_preprocessor = self.preprocessor.fit(o)
         return self.fit_preprocessor
     
     def transform(self, o, copy=True):
         if type(o) in [float, int]: o = array([o]).reshape(-1,1)
         o_shape = o.shape
-        if isinstance(o, pd.Series): o = o.values.reshape(-1,1)
-        else: o = o.reshape(-1,1)
+        o = o.values.reshape(-1,1) if isinstance(o, pd.Series) else o.reshape(-1,1)
         output = self.fit_preprocessor.transform(o).reshape(*o_shape)
-        if isinstance(o, torch.Tensor): return o.new(output)
-        return output
+        return o.new(output) if isinstance(o, torch.Tensor) else output
     
     def inverse_transform(self, o, copy=True):
         o_shape = o.shape
-        if isinstance(o, pd.Series): o = o.values.reshape(-1,1)
-        else: o = o.reshape(-1,1)
+        o = o.values.reshape(-1,1) if isinstance(o, pd.Series) else o.reshape(-1,1)
         output = self.fit_preprocessor.inverse_transform(o).reshape(*o_shape)
-        if isinstance(o, torch.Tensor): return o.new(output)
-        return output
+        return o.new(output) if isinstance(o, torch.Tensor) else output
 
 
 StandardScaler = partial(sklearn.preprocessing.StandardScaler)
@@ -1794,12 +1770,13 @@ def ReLabeler(cm):
             cm = class mapping dictionary
     """
     def _relabel(y):
-        obj = len(set([len(listify(v)) for v in cm.values()])) > 1
+        obj = len({len(listify(v)) for v in cm.values()}) > 1
         keys = cm.keys()
         if obj: 
-            new_cm = {k:v for k,v in zip(keys, [listify(v) for v in cm.values()])}
+            new_cm = dict(zip(keys, [listify(v) for v in cm.values()]))
             return np.array([new_cm[yi] if yi in keys else listify(yi) for yi in y], dtype=object).reshape(*y.shape)
         else: 
-            new_cm = {k:v for k,v in zip(keys, [listify(v) for v in cm.values()])}
+            new_cm = dict(zip(keys, [listify(v) for v in cm.values()]))
             return np.array([new_cm[yi] if yi in keys else listify(yi) for yi in y]).reshape(*y.shape)
+
     return _relabel

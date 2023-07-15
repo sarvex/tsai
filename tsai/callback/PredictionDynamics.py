@@ -37,7 +37,7 @@ class PredictionDynamics(Callback):
         self.run = not hasattr(self.learn, 'lr_finder') and not hasattr(self, "gather_preds")
         if not self.run:
             return
-        self.cat = True if (hasattr(self.dls, "c") and self.dls.c > 1) else False
+        self.cat = bool((hasattr(self.dls, "c") and self.dls.c > 1))
         if self.cat:
             self.binary = self.dls.c == 2
         if self.show_perc != 1:
@@ -112,8 +112,10 @@ class PredictionDynamics(Callback):
                     self._color = [_cm(1. * c/self._n_classes) for c in range(1, self._n_classes + 1)][::-1]
                     self._h_vals = np.linspace(-.5, self._n_classes - .5, self._n_classes + 1)[::-1]
                     self._rand = []
-                    for i, c in enumerate(self._classes):
-                        self._rand.append(.5 * (np.random.rand(np.sum(y_true == c)) - .5))
+                    self._rand.extend(
+                        0.5 * (np.random.rand(np.sum(y_true == c)) - 0.5)
+                        for c in self._classes
+                    )
             self.graph_fig, self.graph_ax = plt.subplots(1, figsize=self.figsize)
             self.graph_out = display("", display_id=True)
         self.graph_ax.clear()

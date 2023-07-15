@@ -75,8 +75,7 @@ def get_gpu_memory():
 
     command = "nvidia-smi --query-gpu=memory.total --format=csv"
     memory_info = subprocess.check_output(command.split()).decode("ascii").split("\n")[:-1][1:]
-    memory_values = [round(int(x.split()[0]) / 1024, 2) for i, x in enumerate(memory_info)]
-    return memory_values
+    return [round(int(x.split()[0]) / 1024, 2) for x in memory_info]
 
 
 def get_ram_memory():
@@ -132,7 +131,11 @@ def _save_nb():
         this.nextElementSibling.focus();
         this.dispatchEvent(new KeyboardEvent('keydown', {key:'s', keyCode: 83, metaKey: true}));
         """
-        display(HTML(('<img src onerror="{}" style="display:none">' '<input style="width:0;height:0;border:0">').format(script)))
+        display(
+            HTML(
+                f'<img src onerror="{script}" style="display:none"><input style="width:0;height:0;border:0">'
+            )
+        )
     else:
         display(Javascript("IPython.notebook.save_checkpoint();"))
 
@@ -150,10 +153,10 @@ def save_nb(nb_name=None, attempts=1, verbose=True, wait=2):
     else:
         saved = False
         current_time = time.time()
-        for i in range(attempts):
+        for _ in range(attempts):
             _save_nb()
             # confirm it's saved. This takes come variable time.
-            for j in range(10):
+            for _ in range(10):
                 time.sleep(1)
                 saved_time = os.path.getmtime(nb_name)
                 if saved_time >= current_time:
@@ -213,7 +216,7 @@ def beep(inp=1, duration=0.1, n=1):
     rate = 10000
     mult = 1.6 * inp if inp else 0.08
     wave = np.sin(mult * np.arange(rate * duration))
-    for i in range(n):
+    for _ in range(n):
         display(Audio(wave, rate=10000, autoplay=True))
         time.sleep(duration / 0.1)
 
@@ -289,17 +292,16 @@ class Timer:
                 if self.return_seconds:
                     elapsed = elapsed.total_seconds()
                     self.all_elapsed = self.all_elapsed.total_seconds()
-                if self.instance is not None:
-                    print(f"Elapsed time ({self.n:3}) ({self.instance:3}): {elapsed}")
-                    print(f"Total time         ({self.instance:3}): {self.all_elapsed}")
-                else:
+                if self.instance is None:
                     print(f"Elapsed time ({self.n:3}): {elapsed}")
                     print(f"Total time              : {self.all_elapsed}")
-            else:
-                if self.instance is not None:
-                    print(f"Total time         ({self.instance:3}): {total_elapsed}")
                 else:
-                    print(f"Total time              : {total_elapsed}")
+                    print(f"Elapsed time ({self.n:3}) ({self.instance:3}): {elapsed}")
+                    print(f"Total time         ({self.instance:3}): {self.all_elapsed}")
+            elif self.instance is None:
+                print(f"Total time              : {total_elapsed}")
+            else:
+                print(f"Total time         ({self.instance:3}): {total_elapsed}")
         return total_elapsed
 
 
@@ -320,10 +322,7 @@ def import_file_as_module(filepath, return_path=False):
         module = importlib.import_module(mod_path)
     except:
         module = importlib.import_module(name, package)
-    if return_path:
-        return module, mod_path
-    else:
-        return module
+    return (module, mod_path) if return_path else module
 
 
 def _has_mps():
@@ -368,19 +367,19 @@ def my_setup(*pkgs):
 
         print(f"tsai            : {tsai.__version__}")
     except:
-        print(f"tsai            : N/A")
+        print("tsai            : N/A")
     try:
         import fastai
 
         print(f"fastai          : {fastai.__version__}")
     except:
-        print(f"fastai          : N/A")
+        print("fastai          : N/A")
     try:
         import fastcore
 
         print(f"fastcore        : {fastcore.__version__}")
     except:
-        print(f"fastcore        : N/A")
+        print("fastcore        : N/A")
 
     if pkgs:
         for pkg in pkgs:
@@ -395,10 +394,9 @@ def my_setup(*pkgs):
         try:
             import torch_xla
 
-            print(f"device          : TPU")
+            print("device          : TPU")
         except:
-            iscuda = torch.cuda.is_available()
-            if iscuda:
+            if iscuda := torch.cuda.is_available():
                 device_count = torch.cuda.device_count()
                 gpu_text = "gpu" if device_count == 1 else "gpus"
                 print(f"device          : {device_count} {gpu_text} ({[torch.cuda.get_device_name(i) for i in range(device_count)]})")
@@ -409,19 +407,19 @@ def my_setup(*pkgs):
     try:
         print(f"cpu cores       : {psutil.cpu_count(logical=False)}")
     except:
-        print(f"cpu cores       : N/A")
+        print("cpu cores       : N/A")
     try:
         print(f"threads per cpu : {psutil.cpu_count() // psutil.cpu_count(logical=False)}")
     except:
-        print(f"threads per cpu : N/A")
+        print("threads per cpu : N/A")
     try:
         print(f"RAM             : {get_ram_memory()} GB")
     except:
-        print(f"RAM             : N/A")
+        print("RAM             : N/A")
     try:
         print(f"GPU memory      : {get_gpu_memory()} GB")
     except:
-        print(f"GPU memory      : N/A")
+        print("GPU memory      : N/A")
 
 
 computer_setup = my_setup

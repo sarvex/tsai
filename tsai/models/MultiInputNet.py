@@ -30,7 +30,7 @@ class MultiInputNet(Module):
         self.heads = nn.ModuleList()
         head_nf = 0
         min_nf = np.inf
-        for i, model in enumerate(models):
+        for model in models:
             try: # if subscriptable
                 self.heads.append(model[1])
                 self.backbones.append(model[0])
@@ -63,12 +63,11 @@ class MultiInputNet(Module):
 
             # Process features separately
             if self.training and self.multi_output: out.append(self.heads[k](feat))
-            
+
             # Concat features
             if feat.ndim == 3: feat = self.reshape(feat)
             concat_feats = feat if k==0 else self.concat([concat_feats, feat])
-            
+
         # Process joint features
         out.append(self.heads[-1](concat_feats))
-        if self.training and self.multi_output: return out
-        else:  return out[0]
+        return out if self.training and self.multi_output else out[0]

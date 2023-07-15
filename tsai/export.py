@@ -23,8 +23,10 @@ def _mk_flag_re(body, n_params, comment):
     assert body!=True, 'magics no longer supported'
     prefix = r"\s*\#\|\s*"
     param_group = ""
-    if n_params == -1: param_group = r"[ \t]+(.+)"
-    if n_params == 1: param_group = r"[ \t]+(\S+)"
+    if n_params == -1:
+        param_group = r"[ \t]+(.+)"
+    elif n_params == 1:
+        param_group = r"[ \t]+(\S+)"
     if n_params == (0,1): param_group = r"(?:[ \t]+(\S+))?"
     return re.compile(rf"""
 # {comment}:
@@ -105,8 +107,7 @@ def _get_kernel_id() -> str:
     """ Returns the kernel ID of the ipykernel.
     """
     connection_file = Path(ipykernel.get_connection_file()).stem
-    kernel_id = connection_file.split('-', 1)[1]
-    return kernel_id
+    return connection_file.split('-', 1)[1]
 
 def _get_sessions(srv):
     """ Given a server, returns sessions, or HTTPError if access is denied.
@@ -115,10 +116,7 @@ def _get_sessions(srv):
         server.
     """
     try:
-        qry_str = ""
-        token = srv['token']
-        if token:
-            qry_str = f"?token={token}"
+        qry_str = f"?token={token}" if (token := srv['token']) else ""
         url = f"{srv['url']}api/sessions{qry_str}"
         with urllib.request.urlopen(url) as req:
             return json.load(req)
@@ -145,8 +143,7 @@ def get_nb_name(d=None) -> str:
         or raises a FileNotFoundError exception if it cannot be determined.
     """
     try:
-        nb_name = d['__vsc_ipynb_file__']
-        return nb_name # VSCode
+        return d['__vsc_ipynb_file__']
     except:
         try: 
             _, path = _find_nb()
@@ -170,14 +167,14 @@ def get_nb_path() -> Path:
         or raises a FileNotFoundError exception if it cannot be determined.
     """
     try: 
-        if is_colab(): return get_colab_nb_name()
-        else: 
-            srv, path = _find_nb()
-            if srv and path:
-                root_dir = Path(srv.get('root_dir') or srv['notebook_dir'])
-                return root_dir / path
-            else:
-                return
+        if is_colab():
+            if is_colab(): return get_colab_nb_name()
+        srv, path = _find_nb()
+        if srv and path:
+            root_dir = Path(srv.get('root_dir') or srv['notebook_dir'])
+            return root_dir / path
+        else:
+            return
     except: 
         return
 
@@ -198,15 +195,15 @@ def nb2py(nb:      Param("absolute or relative full path to the notebook you wan
           verbose: Param("controls verbosity", store_false)=True,
          ):
     "Converts a notebook to a python script in a predefined folder."
-    
+
     try: 
         import nbformat
     except ImportError: 
         raise ImportError('You need to install nbformat to run nb2py')
-    
+
     # make sure drive is mounted when using Colab
     if is_colab(): maybe_mount_gdrive()
-    
+
     # nb path & name
     if nb is not None:
         nb_path = Path(nb)
@@ -220,27 +217,25 @@ def nb2py(nb:      Param("absolute or relative full path to the notebook you wan
     if nb_path is None: 
         print("nb2py couldn't get the nb name. Pass it as an nb argument and rerun nb2py.")
         return
-    
+
     nb_name = nb_path.name
     nb_path = Path(nb_path).absolute()
     assert os.path.isfile(nb_path), f"nb2py couldn't find {nb_path}. Please, confirm the path is correct."
-    
+
     # save nb: only those that are run from the notebook itself
     if save and not is_colab() and nb is None: 
         try: save_nb(nb_name)
         except: print(f"nb2py couldn't save the nb automatically. It will used last saved at {to_local_time(os.path.getmtime(nb_name))}")
-    
+
     # script path & name
-    if folder is not None: folder = Path(folder)
-    else: folder = nb_path.parent
-    if name is not None: name = f"{Path(name).stem}.py"
-    else: name = f"{nb_path.stem}.py"
+    folder = Path(folder) if folder is not None else nb_path.parent
+    name = f"{Path(name).stem}.py" if name is not None else f"{nb_path.stem}.py"
     script_path = folder/name
-    
+
     # delete file if exists and create script_path folder if doesn't exist
     if os.path.exists(script_path): os.remove(script_path)
     script_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Write script header
     with open(script_path, 'w') as f:
         f.write(f'# -*- coding: utf-8 -*-\n')
@@ -249,10 +244,10 @@ def nb2py(nb:      Param("absolute or relative full path to the notebook you wan
         if nb_path is not None:
             f.write(f'Original file is located at:\n')
             f.write(f'    {nb_path}\n')
-        f.write(f'"""')
+        f.write('"""')
 
     # identify convertible cells (excluding empty and those with hide flags)
-    for i in range(10):
+    for _ in range(10):
         try: 
             with open(Path(nb_path),'r', encoding='utf8') as f: 
                 nb = nbformat.reads(f.read(), as_version=4)
@@ -280,7 +275,7 @@ def nb2py(nb:      Param("absolute or relative full path to the notebook you wan
         code_lines = cl
         code = sep + '\n'.join(code_lines)
         with open(script_path, 'a', encoding='utf8') as f: f.write(code)
-            
+
     # check script exists
     assert os.path.isfile(script_path), f"an error occurred during the export and {script_path} doesn't exist"
     if verbose: 

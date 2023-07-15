@@ -498,9 +498,7 @@ class DropPath(nn.Module):
         shape = (x.shape[0],) + (1,) * (x.ndim - 1)
         random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
         random_tensor.floor_()
-        output = x.div(keep_prob) * random_tensor
-#         output = x.div(random_tensor.mean()) * random_tensor # divide by the actual mean to mantain the input mean?
-        return output
+        return x.div(keep_prob) * random_tensor
 
 # %% ../../nbs/029_models.layers.ipynb 40
 class Sharpen(Module):
@@ -514,7 +512,7 @@ class Sharpen(Module):
 class Sequential(nn.Sequential):
     """Class that allows you to pass one or multiple inputs"""
     def forward(self, *x):
-        for i, module in enumerate(self._modules.values()): 
+        for module in self._modules.values():
             x = module(*x) if isinstance(x, (list, tuple, L)) else module(x)
         return x
 
@@ -730,14 +728,14 @@ class PoolingLayer(Module):
         self.method = method
         self.token = token
         self.seq_last = seq_last
-        if method == 'linear' or method == 'conv1d':
+        if method in ['linear', 'conv1d']:
             self.linear = nn.Linear(seq_len - token, 1)
 
     def forward(self, x): 
         if self.method == 'cls':
             return x[..., 0] if self.seq_last else x[:, 0]
         if self.token:
-            x = x[..., 1:] if self.seq_last else x[:, 1:] 
+            x = x[..., 1:] if self.seq_last else x[:, 1:]
         if self.method == 'max':
             return torch.max(x, -1)[0] if self.seq_last else torch.max(x, 1)[0]
         elif self.method == 'mean':
@@ -747,7 +745,7 @@ class PoolingLayer(Module):
                               torch.mean(x, -1) if self.seq_last else torch.mean(x, 1)], 1)
         elif self.method == 'flatten':
             return x.flatten(1)
-        elif self.method == 'linear' or self.method == 'conv1d':
+        elif self.method in ['linear', 'conv1d']:
             return self.linear(x)[...,0] if self.seq_last else self.linear(x.transpose(1,2))[...,0]
     
     def __repr__(self): return f"{self.__class__.__name__}(method={self.method}, token={self.token}, seq_last={self.seq_last})"
@@ -806,10 +804,7 @@ class RevIN(nn.Module):
         """
         
         # Normalize
-        if mode: return self.normalize(x)
-        
-        # Denormalize
-        else: return self.denormalize(x)
+        return self.normalize(x) if mode else self.denormalize(x)
            
     def normalize(self, x):
         if self.subtract_last:
@@ -822,23 +817,19 @@ class RevIN(nn.Module):
             x = x.div(self.std)
             x = x.mul(self.weight)
             x = x.add(self.bias)
-            return x
         else:
             x = x.sub(self.sub)
             x = x.div(self.std)
-            return x
+
+        return x
         
     def denormalize(self, x):
         if self.affine:
             x = x.sub(self.bias)
             x = x.div(self.weight)
-            x = x.mul(self.std)
-            x = x.add(self.sub)
-            return x
-        else:
-            x = x.mul(self.std)
-            x = x.add(self.sub)
-            return x
+        x = x.mul(self.std)
+        x = x.add(self.sub)
+        return x
 
 # %% ../../nbs/029_models.layers.ipynb 67
 class RevIN(nn.Module):
@@ -882,24 +873,16 @@ class RevIN(nn.Module):
                 x = x.div(self.std)
                 x = x.mul(self.weight)
                 x = x.add(self.bias)
-                return x
             else:
                 x = x.sub(self.sub)
                 x = x.div(self.std)
-                return x
-        
-        # Denormalize
         else: 
             if self.affine:
                 x = x.sub(self.bias)
                 x = x.div(self.weight)
-                x = x.mul(self.std)
-                x = x.add(self.sub)
-                return x
-            else:
-                x = x.mul(self.std)
-                x = x.add(self.sub)
-                return x
+            x = x.mul(self.std)
+            x = x.add(self.sub)
+        return x
 
 # %% ../../nbs/029_models.layers.ipynb 70
 def create_pool_head(n_in, c_out, seq_len=None, concat_pool=False, fc_dropout=0., bn=False, y_range=None, **kwargs):
@@ -950,11 +933,11 @@ def create_conv_head(*args, adaptive_size=None, y_range=None):
     nf = args[0]
     c_out = args[1]
     layers = [nn.AdaptiveAvgPool1d(adaptive_size)] if adaptive_size is not None else []
-    for i in range(2):
-        if nf > 1: 
-            layers += [ConvBlock(nf, nf // 2, 1)] 
-            nf = nf//2
-        else: break
+    for _ in range(2):
+        if nf <= 1:
+            break
+        layers += [ConvBlock(nf, nf // 2, 1)]
+        nf = nf//2
     layers += [ConvBlock(nf, c_out, 1), GAP1d(1)]
     if y_range: layers += [SigmoidRange(*y_range)]
     return nn.Sequential(*layers)
@@ -1369,8 +1352,7 @@ class MultiConv1d(Module):
 
     def forward(self, x):
         output = [x] if self.keep_original else []
-        for l in self.layers:
-            output.append(l(x))
+        output.extend(l(x) for l in self.layers)
         x = torch.cat(output, dim=self.dim)
         return x
 

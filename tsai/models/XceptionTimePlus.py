@@ -28,7 +28,17 @@ class XceptionModulePlus(Module):
         kss = [ksi if ksi % 2 != 0 else ksi - 1 for ksi in kss]  # ensure odd kss for padding='same'
         self.bottleneck = Conv(ni, nf, 1, coord=coord, bias=False) if bottleneck else noop
         self.convs = nn.ModuleList()
-        for i in range(len(kss)): self.convs.append(Conv(nf if bottleneck else ni, nf, kss[i], coord=coord, separable=separable, bias=False))
+        for ks_ in kss:
+            self.convs.append(
+                Conv(
+                    nf if bottleneck else ni,
+                    nf,
+                    ks_,
+                    coord=coord,
+                    separable=separable,
+                    bias=False,
+                )
+            )
         self.mp_conv = nn.Sequential(*[nn.MaxPool1d(3, stride=1, padding=1), Conv(ni, nf, 1, coord=coord, bias=False)])
         self.concat = Concat()
         _norm_act = []
@@ -77,7 +87,7 @@ class XceptionTimePlus(nn.Sequential):
         nf = ifnone(nf, nb_filters)
         # Backbone
         backbone = XceptionBlockPlus(c_in, nf, coord=coord, norm=norm, **kwargs)
-        
+
         # Head
         gap1 = AdaptiveConcatPool1d(adaptive_size) if adaptive_size and concat_pool else nn.AdaptiveAvgPool1d(adaptive_size) if adaptive_size else noop
         mult = 2 if adaptive_size and concat_pool else 1
@@ -87,9 +97,8 @@ class XceptionTimePlus(nn.Sequential):
         gap2 = GAP1d(1)
         self.head_nf = nf * 32 * mult
         self.seq_len = seq_len
-        if custom_head is not None: 
-            if isinstance(custom_head, nn.Module): head = custom_head
-            else: head = custom_head(self.head_nf, c_out, seq_len)
-        else: head = nn.Sequential(gap1, conv1x1_1, conv1x1_2, conv1x1_3, gap2)
-        
+        if custom_head is None: head = nn.Sequential(gap1, conv1x1_1, conv1x1_2, conv1x1_3, gap2)
+
+        elif isinstance(custom_head, nn.Module): head = custom_head
+        else: head = custom_head(self.head_nf, c_out, seq_len)
         super().__init__(OrderedDict([('backbone', backbone), ('head', head)]))

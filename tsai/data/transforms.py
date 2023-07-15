@@ -85,11 +85,9 @@ class TSGaussianNoise(RandTransform):
         if self.magnitude <= 0: return o
         noise = self.magnitude * torch.randn_like(o)
         if self.ex is None:
-            if self.additive: return o + noise
-            else: return o * (1 + noise)
+            return o + noise if self.additive else o * (1 + noise)
         else:
-            if self.additive: output = o + noise
-            else: output = o * (1 + noise)
+            output = o + noise if self.additive else o * (1 + noise)
         output[..., self.ex,:] = o[...,self.ex,:]
         return output
 
@@ -640,7 +638,7 @@ class TSTranslateX(RandTransform):
         lambd = np.random.beta(self.magnitude, self.magnitude)
         lambd = min(lambd, 1 - lambd)
         shift = int(round(seq_len * lambd))
-        if shift == 0 or shift == seq_len: return o
+        if shift in [0, seq_len]: return o
         if np.random.rand() < 0.5: shift = -shift
         new_start = max(0, shift)
         new_end = min(seq_len + shift, seq_len)
@@ -707,8 +705,7 @@ class TSVerticalFlip(RandTransform):
         self.magnitude, self.ex = magnitude, ex
         super().__init__(**kwargs)
     def encodes(self, o: TSTensor): 
-        if not self.magnitude or self.magnitude <= 0: return o
-        return - o
+        return o if not self.magnitude or self.magnitude <= 0 else - o
 
 # %% ../../nbs/010_data.transforms.ipynb 74
 class TSResize(RandTransform):
@@ -721,8 +718,12 @@ class TSResize(RandTransform):
     def encodes(self, o: TSTensor): 
         if self.magnitude == 0: return o
         size = ifnone(self.size, int(round((1 + self.magnitude) * o.shape[-1])))
-        output = F.interpolate(o, size=size, mode=self.mode, align_corners=None if self.mode in ['nearest', 'area'] else False)
-        return output
+        return F.interpolate(
+            o,
+            size=size,
+            mode=self.mode,
+            align_corners=None if self.mode in ['nearest', 'area'] else False,
+        )
 
 # %% ../../nbs/010_data.transforms.ipynb 76
 class TSRandomSize(RandTransform):
@@ -810,32 +811,25 @@ class TSRandom2Value(RandTransform):
         if is_listy(sel_vars) and is_listy(sel_steps):
             sel_vars = np.asarray(sel_vars)[:, None]
         self.sel_vars, self.sel_steps = sel_vars, sel_steps
-        if sel_vars is None:
-            self._sel_vars = slice(None)
-        else:
-            self._sel_vars = sel_vars
-        if sel_steps is None or static:
-            self._sel_steps = slice(None)
-        else:
-            self._sel_steps = sel_steps
+        self._sel_vars = slice(None) if sel_vars is None else sel_vars
+        self._sel_steps = slice(None) if sel_steps is None or static else sel_steps
         self.magnitude, self.static, self.value = magnitude , static, value
         super().__init__(**kwargs)
 
     def encodes(self, o:TSTensor):
         if not self.magnitude or self.magnitude <= 0 or self.magnitude > 1: return o
         if self.static:
-            if self.sel_vars is not None:
-                if self.magnitude == 1:
-                    o[:, self._sel_vars] = o[:, self._sel_vars].fill_(self.value)
-                    return o
-                else:
-                    vals = torch.zeros_like(o)
-                    vals[:, self._sel_vars] = torch.rand(*vals[:, self._sel_vars, 0].shape, device=o.device).unsqueeze(-1)
-            else:
+            if self.sel_vars is None:
                 if self.magnitude == 1:
                     return o.fill_(self.value) 
                 else:
                     vals = torch.rand(*o.shape[:-1], device=o.device).unsqueeze(-1)
+            elif self.magnitude == 1:
+                o[:, self._sel_vars] = o[:, self._sel_vars].fill_(self.value)
+                return o
+            else:
+                vals = torch.zeros_like(o)
+                vals[:, self._sel_vars] = torch.rand(*vals[:, self._sel_vars, 0].shape, device=o.device).unsqueeze(-1)
         elif self.sel_vars is not None or self.sel_steps is not None:
             if self.magnitude == 1:
                 o[:, self._sel_vars, self._sel_steps] = o[:, self._sel_vars, self._sel_steps].fill_(self.value)
@@ -843,11 +837,10 @@ class TSRandom2Value(RandTransform):
             else:
                 vals = torch.zeros_like(o)
                 vals[:, self._sel_vars, self._sel_steps] = torch.rand(*vals[:, self._sel_vars, self._sel_steps].shape, device=o.device)
+        elif self.magnitude == 1:
+            return o.fill_(self.value)
         else:
-            if self.magnitude == 1:
-                return o.fill_(self.value) 
-            else:
-                vals = torch.rand_like(o)
+            vals = torch.rand_like(o)
         mask = vals > (1 - self.magnitude)
         return o.masked_fill(mask, self.value)
 
@@ -956,8 +949,7 @@ class RandAugment(RandTransform):
                 t, min_val, max_val = tfm
                 tfms_ += [t(magnitude=self.magnitude * float(max_val - min_val) + min_val)]
             else:  tfms_ += [tfm()]
-        output = compose_tfms(o, tfms_, split_idx=self.split_idx)
-        return output
+        return compose_tfms(o, tfms_, split_idx=self.split_idx)
 
 # %% ../../nbs/010_data.transforms.ipynb 103
 class TestTfm(RandTransform):

@@ -57,17 +57,16 @@ class ResNetPlus(nn.Sequential):
         resblock2 = ResBlockPlus(nf,     nf * 2, se=se,   **kwargs)
         resblock3 = ResBlockPlus(nf * 2, nf * 2, sa=sa, **kwargs)
         backbone = nn.Sequential(resblock1, resblock2, resblock3)
-        
+
         self.head_nf = nf * 2
         if flatten:
             assert seq_len is not None, "you need to pass seq_len when flatten=True"
             self.head_nf *= seq_len
-        if custom_head is not None:
-            if isinstance(custom_head, nn.Module): head = custom_head
-            else: head = custom_head(self.head_nf, c_out, seq_len)
-        else:
+        if custom_head is None:
             head = self.create_head(self.head_nf, c_out, flatten=flatten,
                                          concat_pool=concat_pool, fc_dropout=fc_dropout, y_range=y_range)
+        elif isinstance(custom_head, nn.Module): head = custom_head
+        else: head = custom_head(self.head_nf, c_out, seq_len)
         super().__init__(OrderedDict([('backbone', backbone), ('head', head)]))
             
     def create_head(self, nf, c_out, flatten=False, concat_pool=False, fc_dropout=0., y_range=None, **kwargs):

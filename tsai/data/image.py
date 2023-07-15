@@ -31,8 +31,7 @@ class TSImage(TensorImage):
     def len(self): return self.shape[-2:]
         
     def __repr__(self):
-        if self.ndim == 0: return f'{self.data}'
-        else: return f'TSImage(shape:{self.shape})'
+        return f'{self.data}' if self.ndim == 0 else f'TSImage(shape:{self.shape})'
 
     def show(self, **kwargs):
         if self.ndim < 3: 
@@ -43,12 +42,12 @@ class TSImage(TensorImage):
             while True:
                 self = self[0]
                 if self.ndim == 3: break
-        if self[:3].shape[0] == 3 and kwargs == {}: 
+        if self[:3].shape[0] == 3 and not kwargs: 
             display(to_image(self[:3]))
-            return
         else: 
             TensorImage(self[:3]).show(**kwargs)
-            return
+
+        return
 
 
 class ToTSImage(Transform):
@@ -106,7 +105,7 @@ class TSToMat(Transform):
         canvas = FigureCanvasAgg(fig)
         output = []
         for oi in o:
-            if output == []: im = ax.imshow(oi, aspect=aspect, vmin=-1, vmax=1, cmap=self.cmap, **self.kwargs) 
+            if not output: im = ax.imshow(oi, aspect=aspect, vmin=-1, vmax=1, cmap=self.cmap, **self.kwargs)
             else: im.set_data(oi)
             canvas.draw()
             buf = np.asarray(canvas.buffer_rgba())[..., :3]

@@ -44,8 +44,10 @@ def get_embed_size(n_cat, rule='log2'):
 # %% ../../nbs/030_models.utils.ipynb 8
 def get_layers(model, cond=noop, full=True):
     if isinstance(model, Learner): model=model.model
-    if full: return [m for m in flatten_model(model) if any([c(m) for c in L(cond)])]
-    else: return [m for m in model if any([c(m) for c in L(cond)])]
+    if full:
+        return [m for m in flatten_model(model) if any(c(m) for c in L(cond))]
+    else:else
+        return [m for m in model if any(c(m) for c in L(cond))]
 
 def is_layer(*args):
     def _is_layer(l, cond=args):
@@ -130,13 +132,12 @@ def transfer_weights(model, weights_path:Path, device:torch.device=None, exclude
             else: unmatched_layers.append(name)
         else:
             unmatched_layers.append(name)
-            pass # these are weights that weren't in the original model, such as a new head
-    if matched_layers == 0: raise Exception("No shared weight names were found between the models")
+    if matched_layers == 0:
+        if matched_layers == 0: raise Exception("No shared weight names were found between the models")
+    if unmatched_layers:
+        print(f'check unmatched_layers: {unmatched_layers}')
     else:
-        if len(unmatched_layers) > 0:
-            print(f'check unmatched_layers: {unmatched_layers}')
-        else:
-            print(f"weights from {weights_path} successfully transferred!\n")
+        print(f"weights from {weights_path} successfully transferred!\n")
 
 # %% ../../nbs/030_models.utils.ipynb 13
 def build_ts_model(arch, c_in=None, c_out=None, seq_len=None, d=None, dls=None, device=None, verbose=False, 
@@ -151,7 +152,7 @@ def build_ts_model(arch, c_in=None, c_out=None, seq_len=None, d=None, dls=None, 
         c_out = ifnone(c_out, dls.c)
         seq_len = ifnone(seq_len, dls.len)
         d = ifnone(d, dls.d)
-    
+
     if s_cat_idxs or s_cat_embeddings or s_cat_embedding_dims or s_cont_idxs or o_cat_idxs or o_cat_embeddings or o_cat_embedding_dims or o_cont_idxs:
         from tsai.models.multimodal import MultInputWrapper
         model = MultInputWrapper(arch, c_in=c_in, c_out=c_out, seq_len=seq_len, d=d,
@@ -180,14 +181,42 @@ def build_ts_model(arch, c_in=None, c_out=None, seq_len=None, d=None, dls=None, 
         "MLSTM_FCNPlus", "MGRU_FCNPlus", "RNNAttentionPlus", "LSTMAttentionPlus", "GRUAttentionPlus", "ConvTran", "ConvTranPlus", 'mWDNPlus']:
             pv(f'arch: {arch.__name__}(c_in={c_in} c_out={c_out} seq_len={seq_len} d={d} arch_config={arch_config}, kwargs={kwargs})', verbose)
             model = (arch(c_in=c_in, c_out=c_out, seq_len=seq_len, d=d, **arch_config, **kwargs)).to(device=device)
-        elif sum([1 for v in ['RNN_FCN', 'LSTM_FCN', 'RNNPlus', 'LSTMPlus', 'GRUPlus', 'InceptionTime', 'TSiT', 'Sequencer', 'XceptionTimePlus',
-                            'GRU_FCN', 'OmniScaleCNN', 'mWDN', 'TST', 'XCM', 'MLP', 'MiniRocket', 'InceptionRocket', 'ResNetPlus', 
-                            'RNNAttention', 'LSTMAttention', 'GRUAttention', 'MultiRocket', 'MultiRocketPlus', 'Hydra', 'HydraPlus', 
-                            'HydraMultiRocket', 'HydraMultiRocketPlus']
-                if v in arch.__name__]):
+        elif sum(
+            1
+            for v in [
+                'RNN_FCN',
+                'LSTM_FCN',
+                'RNNPlus',
+                'LSTMPlus',
+                'GRUPlus',
+                'InceptionTime',
+                'TSiT',
+                'Sequencer',
+                'XceptionTimePlus',
+                'GRU_FCN',
+                'OmniScaleCNN',
+                'mWDN',
+                'TST',
+                'XCM',
+                'MLP',
+                'MiniRocket',
+                'InceptionRocket',
+                'ResNetPlus',
+                'RNNAttention',
+                'LSTMAttention',
+                'GRUAttention',
+                'MultiRocket',
+                'MultiRocketPlus',
+                'Hydra',
+                'HydraPlus',
+                'HydraMultiRocket',
+                'HydraMultiRocketPlus',
+            ]
+            if v in arch.__name__
+        ):
             pv(f'arch: {arch.__name__}(c_in={c_in} c_out={c_out} seq_len={seq_len} arch_config={arch_config} kwargs={kwargs})', verbose)
             model = arch(c_in, c_out, seq_len=seq_len, **arch_config, **kwargs).to(device=device)
-        elif 'xresnet' in arch.__name__ and not '1d' in arch.__name__:
+        elif 'xresnet' in arch.__name__ and '1d' not in arch.__name__:
             pv(f'arch: {arch.__name__}(c_in={c_in} n_out={c_out} arch_config={arch_config} kwargs={kwargs})', verbose)
             model = (arch(c_in=c_in, n_out=c_out, **arch_config, **kwargs)).to(device=device)
         elif 'xresnet1d' in arch.__name__.lower():
@@ -218,7 +247,9 @@ def build_ts_model(arch, c_in=None, c_out=None, seq_len=None, d=None, dls=None, 
         model.backbone = model[:cut]
         model.head = model[cut:]
 
-    if pretrained and not ('xresnet' in arch.__name__ and not '1d' in arch.__name__):
+    if pretrained and (
+        'xresnet' not in arch.__name__ or '1d' in arch.__name__
+    ):
         assert weights_path is not None, "you need to pass a valid weights_path to use a pre-trained model"
         transfer_weights(model, weights_path, exclude_head=exclude_head, device=device)
 
@@ -262,9 +293,8 @@ def build_tabular_model(arch, dls, layers=None, emb_szs=None, n_out=None, y_rang
     assert n_out, "`n_out` is not defined, and could not be inferred from data, set `dls.c` or pass `n_out`"
     if y_range is None and 'y_range' in kwargs: y_range = kwargs.pop('y_range')
     model = arch(emb_szs, len(dls.cont_names), n_out, layers, y_range=y_range, **arch_config, **kwargs).to(device=device)
-    
-    if hasattr(model, "head_nf"):  head_nf = model.head_nf
-    else: head_nf = get_nf(model)
+
+    head_nf = model.head_nf if hasattr(model, "head_nf") else get_nf(model)
     setattr(model, "__name__", arch.__name__)
     if head_nf is not None: setattr(model, "head_nf", head_nf)
     return model
@@ -273,7 +303,7 @@ create_tabular_model = build_tabular_model
 
 # %% ../../nbs/030_models.utils.ipynb 19
 def get_clones(module, N):
-    return nn.ModuleList([deepcopy(module) for i in range(N)])
+    return nn.ModuleList([deepcopy(module) for _ in range(N)])
 
 # %% ../../nbs/030_models.utils.ipynb 21
 def split_model(m): return m.backbone, m.head
@@ -299,10 +329,7 @@ def output_size_calculator(mod, c_in, seq_len=None):
     else:
         c_out, q_len = output_shape[1:]
     mod.training = training
-    if return_q_len:
-        return c_out, q_len
-    else: 
-        return c_out, None
+    return (c_out, q_len) if return_q_len else (c_out, None)
 
 # %% ../../nbs/030_models.utils.ipynb 24
 def change_model_head(model, custom_head, **kwargs):
@@ -313,9 +340,7 @@ def change_model_head(model, custom_head, **kwargs):
 # %% ../../nbs/030_models.utils.ipynb 25
 def naive_forecaster(o, split, horizon=1):
     if is_listy(horizon):
-        _f = []
-        for h in horizon:
-            _f.append(o[np.asarray(split)-h])
+        _f = [o[np.asarray(split)-h] for h in horizon]
         return np.stack(_f)
     return o[np.asarray(split) - horizon]
 

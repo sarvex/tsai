@@ -56,12 +56,12 @@ class _RNN_FCN_BasePlus(nn.Sequential):
         
         if shuffle: assert seq_len is not None, 'need seq_len if shuffle=True'
         conv_layers = listify(conv_layers)
-        
+
         backbone = _RNN_FCN_Base_Backbone(self._cell, c_in, c_out, seq_len=seq_len, hidden_size=hidden_size, rnn_layers=rnn_layers, bias=bias, 
                                           cell_dropout=cell_dropout, rnn_dropout=rnn_dropout, bidirectional=bidirectional, shuffle=shuffle, 
                                           conv_layers=conv_layers, kss=kss, se=se)
-        
-        self.head_nf = hidden_size * (1 + bidirectional) + conv_layers[-1] 
+
+        self.head_nf = hidden_size * (1 + bidirectional) + conv_layers[-1]
         if custom_head:
             if isinstance(custom_head, nn.Module): head = custom_head
             else: head = custom_head(self.head_nf, c_out, seq_len)
@@ -73,17 +73,17 @@ class _RNN_FCN_BasePlus(nn.Sequential):
             else:
                 mult = 1
                 for e in d: mult *= e
-                shape = tuple([e for e in d] + [c_out])
+                shape = tuple(list(d) + [c_out])
             head_layers = []
             if use_bn:
                 head_layers += [nn.BatchNorm1d(self.head_nf)]
             if fc_dropout: head_layers += [nn.Dropout(fc_dropout)]
-            head_layers += [nn.Linear(self.head_nf, c_out * mult)] 
+            head_layers += [nn.Linear(self.head_nf, c_out * mult)]
             if mult != 1:
                 head_layers += [Reshape(*shape)]
             head = nn.Sequential(*head_layers)
-            
-        
+
+
         layers = OrderedDict([('backbone', backbone), ('head', head)])
         super().__init__(layers)
 

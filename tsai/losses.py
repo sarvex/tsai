@@ -90,16 +90,14 @@ class CenterLoss(Module):
         """
         bs = x.shape[0]
         distmat = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(bs, self.c_out) + \
-                  torch.pow(self.centers, 2).sum(dim=1, keepdim=True).expand(self.c_out, bs).T
+                      torch.pow(self.centers, 2).sum(dim=1, keepdim=True).expand(self.c_out, bs).T
         distmat = torch.addmm(distmat, x, self.centers.T, beta=1, alpha=-2)
 
         labels = labels.unsqueeze(1).expand(bs, self.c_out)
         mask = labels.eq(self.classes.expand(bs, self.c_out))
 
         dist = distmat * mask.float()
-        loss = dist.clamp(min=1e-12, max=1e+12).sum() / bs
-
-        return loss
+        return dist.clamp(min=1e-12, max=1e+12).sum() / bs
 
 
 class CenterPlusLoss(Module):

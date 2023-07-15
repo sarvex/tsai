@@ -136,10 +136,7 @@ def plot_calibration_curve(labels, logits, cal_logits=None, figsize=(6,6), n_bin
 @patch
 def calibrate_model(self:Learner, X=None, y=None, lr=1e-2, max_iter=10_000, line_search_fn=None, n_bins=10, strategy='uniform', 
                     show_plot=True, figsize=(6,6), verbose=True):
-    if X is not None and y is not None: 
-        dl = self.dls.valid.new_dl(X, y)
-    else: 
-        dl = self.dls.valid
+    dl = self.dls.valid if X is None or y is None else self.dls.valid.new_dl(X, y)
     assert dl.c == 2, "calibrate_model is only available for binary classification tasks"
     temp_setter = TemperatureSetter(self.model, lr=lr, max_iter=max_iter, line_search_fn=line_search_fn, n_bins=n_bins, verbose=verbose)
     self.calibrated_model = temp_setter(dl)
