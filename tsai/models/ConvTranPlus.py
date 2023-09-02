@@ -192,7 +192,7 @@ class Attention_Rel_Vec(nn.Module):
         self.value = nn.Linear(d_model, d_model, bias=False)
         self.query = nn.Linear(d_model, d_model, bias=False)
 
-        self.Er = nn.Parameter(torch.randn(self.seq_len, int(d_model/n_heads)))
+        self.Er = nn.Parameter(torch.randn(self.seq_len, d_model // n_heads))
 
         self.register_buffer(
             "mask",
@@ -226,8 +226,7 @@ class Attention_Rel_Vec(nn.Module):
         padded = nn.functional.pad(QEr, (1, 0)) # [batch_size, n_heads, seq_len, 1 + seq_len]
         batch_size, n_heads, num_rows, num_cols = padded.shape
         reshaped = padded.reshape(batch_size, n_heads, num_cols, num_rows) # [batch_size, n_heads, 1 + seq_len, seq_len]
-        Srel = reshaped[:, :, 1:, :] # [batch_size, n_heads, seq_len, seq_len]
-        return Srel
+        return reshaped[:, :, 1:, :]
 
 # %% ../../nbs/081_models.ConvTranPlus.ipynb 16
 class ConvTranBackbone(nn.Module):
@@ -247,17 +246,17 @@ class ConvTranBackbone(nn.Module):
         self.embed_layer = nn.Sequential(nn.Conv2d(1, d_model*4, kernel_size=[1, 7], padding='same'), nn.BatchNorm2d(d_model*4), nn.GELU())
         self.embed_layer2 = nn.Sequential(nn.Conv2d(d_model*4, d_model, kernel_size=[c_in, 1], padding='valid'), nn.BatchNorm2d(d_model), nn.GELU())
 
-        assert abs_pos_encode in ['tAPE', 'sin', 'learned', None]
-        if abs_pos_encode == 'tAPE':
-            self.abs_position = tAPE(d_model, dropout=dropout, seq_len=seq_len)
+        assert abs_pos_encode in {'tAPE', 'sin', 'learned', None}
+        if abs_pos_encode == 'learned':
+            self.abs_position = LearnablePositionalEncoding(d_model, dropout=dropout, seq_len=seq_len)
         elif abs_pos_encode == 'sin':
             self.abs_position = AbsolutePositionalEncoding(d_model, dropout=dropout, seq_len=seq_len)
-        elif abs_pos_encode== 'learned':
-            self.abs_position = LearnablePositionalEncoding(d_model, dropout=dropout, seq_len=seq_len)
+        elif abs_pos_encode == 'tAPE':
+            self.abs_position = tAPE(d_model, dropout=dropout, seq_len=seq_len)
         else:
             self.abs_position = nn.Identity()
 
-        assert rel_pos_encode in ['eRPE', 'vector', None]
+        assert rel_pos_encode in {'eRPE', 'vector', None}
         if rel_pos_encode == 'eRPE':
             self.attention_layer = Attention_Rel_Scl(d_model, seq_len, n_heads=n_heads, dropout=dropout)
         elif rel_pos_encode == 'vector':

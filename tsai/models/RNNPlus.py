@@ -24,7 +24,7 @@ class _RNN_Backbone(Module):
             c_in = c_in + sum(cat_embed_dims) - len(n_cat_embeds)
         else:
             self.to_cat_embed = nn.Identity()
-        
+
         # Feature extractor
         if feature_extractor:
             if isinstance(feature_extractor, nn.Module):  self.feature_extractor = feature_extractor
@@ -32,21 +32,43 @@ class _RNN_Backbone(Module):
             c_in, seq_len = output_size_calculator(self.feature_extractor, c_in, seq_len)
         else:
             self.feature_extractor = nn.Identity()
-        
+
         # RNN layers
         rnn_layers = []
         if len(set(hidden_size)) == 1: 
             hidden_size = hidden_size[0]
             if n_layers == 1: rnn_dropout = 0
-            rnn_layers.append(cell(c_in, hidden_size, num_layers=n_layers, bias=bias, batch_first=True, dropout=rnn_dropout, 
-                                   bidirectional=bidirectional))
-            rnn_layers.append(LSTMOutput()) # this selects just the output, and discards h_n, and c_n
+            rnn_layers.extend(
+                (
+                    cell(
+                        c_in,
+                        hidden_size,
+                        num_layers=n_layers,
+                        bias=bias,
+                        batch_first=True,
+                        dropout=rnn_dropout,
+                        bidirectional=bidirectional,
+                    ),
+                    LSTMOutput(),
+                )
+            )
         else: 
             for i in range(len(hidden_size)):
                 input_size = c_in if i == 0 else hs * (1 + bidirectional)
-                hs = hidden_size[i] 
-                rnn_layers.append(cell(input_size, hs, num_layers=1, bias=bias, batch_first=True, bidirectional=bidirectional))
-                rnn_layers.append(LSTMOutput()) # this selects just the output, and discards h_n, and c_n
+                hs = hidden_size[i]
+                rnn_layers.extend(
+                    (
+                        cell(
+                            input_size,
+                            hs,
+                            num_layers=1,
+                            bias=bias,
+                            batch_first=True,
+                            bidirectional=bidirectional,
+                        ),
+                        LSTMOutput(),
+                    )
+                )
                 if rnn_dropout and i < len(hidden_size) - 1: 
                     rnn_layers.append(nn.Dropout(rnn_dropout)) # add dropout to all layers except last
         self.rnn = nn.Sequential(*rnn_layers)

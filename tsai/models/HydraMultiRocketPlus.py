@@ -40,15 +40,11 @@ class HydraMultiRocketBackbonePlus(nn.Module):
         if bs <= batch_size:
             return self(X)
         elif split is None:
-            Z = []
-            for i in range(0, bs, batch_size):
-                Z.append(self(X[i:i+batch_size]))
+            Z = [self(X[i:i+batch_size]) for i in range(0, bs, batch_size)]
             return torch.cat(Z)
         else:
-            Z = []
             batches = torch.as_tensor(split).split(batch_size)
-            for i, batch in enumerate(batches):
-                Z.append(self(X[batch]))
+            Z = [self(X[batch]) for batch in batches]
             return torch.cat(Z)
     
     

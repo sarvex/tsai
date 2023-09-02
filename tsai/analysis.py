@@ -62,44 +62,43 @@ def show_probas(self:Learner, figsize=(6,6), ds_idx=1, dl=None, one_batch=False,
 @patch
 def plot_confusion_matrix(self:Learner, ds_idx=1, dl=None, thr=.5, normalize=False, title='Confusion matrix', cmap="Blues", norm_dec=2, figsize=(5,5),
                           title_fontsize=12, fontsize=10, plot_txt=True, **kwargs):
-        "Plot the confusion matrix, with `title` and using `cmap`."
-        # This function is mainly copied from the sklearn docs
-        if dl is None: dl = self.dls[ds_idx]
-        assert dl.cat
-        if dl.c == 2: # binary classification
-            probas, preds = self.get_preds(dl=dl)
-            y_pred = (probas[:, 1] > thr).numpy().astype(int)
-            y_test = preds.numpy()
-            if normalize: skm_normalize = 'true'
-            else: skm_normalize = None
-            cm = skm.confusion_matrix(y_test, y_pred, normalize=skm_normalize)
-        else: 
-            cm = ClassificationInterpretation.from_learner(self).confusion_matrix()
+    "Plot the confusion matrix, with `title` and using `cmap`."
+    # This function is mainly copied from the sklearn docs
+    if dl is None: dl = self.dls[ds_idx]
+    assert dl.cat
+    if dl.c == 2: # binary classification
+        probas, preds = self.get_preds(dl=dl)
+        y_pred = (probas[:, 1] > thr).numpy().astype(int)
+        y_test = preds.numpy()
+        skm_normalize = 'true' if normalize else None
+        cm = skm.confusion_matrix(y_test, y_pred, normalize=skm_normalize)
+    else: 
+        cm = ClassificationInterpretation.from_learner(self).confusion_matrix()
 
-        if normalize: cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        fig = plt.figure(figsize=figsize, **kwargs)
-        plt.imshow(cm, interpolation='nearest', cmap=cmap)
-        if self.dls.c == 2:
-            plt.title(f"{title} (threshold: {thr})", fontsize=title_fontsize)
-        else: 
-            plt.title(title, fontsize=title_fontsize)
-        tick_marks = np.arange(len(self.dls.vocab))
-        plt.xticks(tick_marks, self.dls.vocab, rotation=90, fontsize=fontsize)
-        plt.yticks(tick_marks, self.dls.vocab, rotation=0, fontsize=fontsize)
+    if normalize: cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    fig = plt.figure(figsize=figsize, **kwargs)
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    if self.dls.c == 2:
+        plt.title(f"{title} (threshold: {thr})", fontsize=title_fontsize)
+    else: 
+        plt.title(title, fontsize=title_fontsize)
+    tick_marks = np.arange(len(self.dls.vocab))
+    plt.xticks(tick_marks, self.dls.vocab, rotation=90, fontsize=fontsize)
+    plt.yticks(tick_marks, self.dls.vocab, rotation=0, fontsize=fontsize)
 
-        if plot_txt:
-            thresh = cm.max() / 2.
-            for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-                coeff = f'{cm[i, j]:.{norm_dec}f}' if normalize else f'{cm[i, j]}'
-                plt.text(j, i, coeff, horizontalalignment="center", verticalalignment="center", color="white" if cm[i, j] > thresh else "black", fontsize=fontsize)
+    if plot_txt:
+        thresh = cm.max() / 2.
+        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+            coeff = f'{cm[i, j]:.{norm_dec}f}' if normalize else f'{cm[i, j]}'
+            plt.text(j, i, coeff, horizontalalignment="center", verticalalignment="center", color="white" if cm[i, j] > thresh else "black", fontsize=fontsize)
 
-        ax = fig.gca()
-        ax.set_ylim(len(self.dls.vocab)-.5,-.5)
+    ax = fig.gca()
+    ax.set_ylim(len(self.dls.vocab)-.5,-.5)
 
-        plt.tight_layout()
-        plt.ylabel('Actual', fontsize=fontsize)
-        plt.xlabel('Predicted', fontsize=fontsize)
-        plt.grid(False)
+    plt.tight_layout()
+    plt.ylabel('Actual', fontsize=fontsize)
+    plt.xlabel('Predicted', fontsize=fontsize)
+    plt.grid(False)
 
 # %% ../nbs/020_analysis.ipynb 6
 @patch
@@ -151,7 +150,7 @@ def feature_importance(self:Learner,
     ):
     r"""Calculates feature importance as the drop in the model's validation loss or metric when a feature value is randomly shuffled"""
     
-    assert method in ['permutation', 'ablation']
+    assert method in {'permutation', 'ablation'}
 
     # X, y
     if X is None:
@@ -175,16 +174,13 @@ def feature_importance(self:Learner,
 
     # Metrics
     metrics = [mn for mn in self.recorder.metric_names if mn not in ['epoch', 'train_loss', 'valid_loss', 'time']]
-    if len(metrics) == 0 or key_metric_idx is None:
+    if not metrics or key_metric_idx is None:
         metric_name = self.loss_func.__class__.__name__
         key_metric_idx = None
     else:
         metric_name = metrics[key_metric_idx]
         metric = self.recorder.metrics[key_metric_idx].func
-        if "sklearn" in inspect.getmodule(metric).__name__:
-            sklearn_metric = True
-        else:
-            sklearn_metric = False
+        sklearn_metric = "sklearn" in inspect.getmodule(metric).__name__
     metric_name = metric_name.replace("train_", "").replace("valid_", "")
     pv(f'Selected metric: {metric_name}', verbose)
 
@@ -206,7 +202,7 @@ def feature_importance(self:Learner,
         sel_var_idxs = sel_var_idxs[self.dls.sel_vars]
     assert len(feature_names) == len(sel_var_idxs)
     g = list(zip(np.arange(len(sel_var_idxs)+2), [0] + sel_var_idxs))
-    
+
     # Loop
     COLS = ['BASELINE'] + list(feature_names)
     results = []
@@ -219,39 +215,40 @@ def feature_importance(self:Learner,
             if i > 0:
                 if k not in sel_var_idxs: continue
                 save_feat = X[:, k].copy()
-                if method == 'permutation':
+                if method == 'ablation':
+                    X[:, k] = np.nan
+                elif method == 'permutation':
                     # shuffle along samples & steps
                     X[:, k] = random_shuffle(X[:, k].flatten(), random_state=random_state).reshape(X[:, k].shape)
-                elif method == 'ablation':
-                    X[:, k] = np.nan
             if key_metric_idx is None:
                 value = self.get_X_preds(X, y, with_loss=True, with_decoded=False, bs=bs)[-1].mean().item()
             else:
                 output = self.get_X_preds(X, y, with_decoded=False, bs=bs)
                 if self.dls.c == 2:
                     try: 
-                        if sklearn_metric:
-                            value = metric(output[1], output[0][:, 1]).item()
-                        else:
-                            value = metric(output[0][:, 1], output[1]).item()
+                        value = (
+                            metric(output[1], output[0][:, 1]).item()
+                            if sklearn_metric
+                            else metric(output[0][:, 1], output[1]).item()
+                        )
                     except: 
                         if sklearn_metric:
                             value = metric(output[1], output[0]).item()
                         else:
                             value = metric(output[0], output[1]).item()
+                elif sklearn_metric:
+                    value = metric(output[1], output[0]).item()
                 else:
-                    if sklearn_metric:
-                        value = metric(output[1], output[0]).item()
-                    else:
-                        value = metric(output[0], output[1]).item()
+                    value = metric(output[0], output[1]).item()
                 del output
             pv(f"{k:3} feature: {COLS[i]:20} {metric_name}: {value:8.6f}", verbose)
             results.append([COLS[i], value])
-            del value; gc.collect()
+            del value
+            gc.collect()
             if i > 0:
                 X[:, k] = save_feat
                 del save_feat; gc.collect()
-        
+
         if method == 'ablation':
             self.dls.valid.after_batch.fs = fs
 

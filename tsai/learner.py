@@ -65,16 +65,15 @@ def save_all(self:Learner, path='export', dls_fname='dls', model_fname='model', 
     if not os.path.exists(path): os.makedirs(path)
 
     self.dls_type = self.dls.__class__.__name__
+    dls_fnames = []
     if self.dls_type == "MixedDataLoaders":
         self.n_loaders = (len(self.dls.loaders), len(self.dls.loaders[0].loaders))
-        dls_fnames = []
         for i,dl in enumerate(self.dls.loaders):
             for j,l in enumerate(dl.loaders):
                 l = l.new(num_workers=1)
                 torch.save(l, path/f'{dls_fname}_{i}_{j}.pth')
                 dls_fnames.append(f'{dls_fname}_{i}_{j}.pth')
     else:
-        dls_fnames = []
         self.n_loaders = len(self.dls.loaders)
         for i,dl in enumerate(self.dls):
             dl = dl.new(num_workers=1)
@@ -87,8 +86,8 @@ def save_all(self:Learner, path='export', dls_fname='dls', model_fname='model', 
 
     # Export learn without the items and the optimizer state for inference
     self.export(path/f'{learner_fname}.pkl')
-    
-    pv(f'Learner saved:', verbose)
+
+    pv('Learner saved:', verbose)
     pv(f"path          = '{path}'", verbose)
     pv(f"dls_fname     = '{dls_fnames}'", verbose)
     pv(f"model_fname   = '{model_fname}.pth'", verbose)
@@ -99,19 +98,17 @@ def load_all(path='export', dls_fname='dls', model_fname='model', learner_fname=
 
     if isinstance(device, int): device = torch.device('cuda', device)
     elif device is None: device = default_device()
-    if device.type == 'cpu': cpu = True
-    else: cpu = None
-
+    cpu = True if device.type == 'cpu' else None
     path = Path(path)
     learn = load_learner(path/f'{learner_fname}.pkl', cpu=cpu, pickle_module=pickle_module)
     learn.path = path
     learn.model_dir = Path() # '.'
     learn.load(f'{model_fname}', with_opt=True, device=device)
 
-    
+
+    dls_fnames = []
     if learn.dls_type == "MixedDataLoaders":
         from tsai.data.mixed import MixedDataLoader, MixedDataLoaders
-        dls_fnames = []
         _dls = []
         for i in range(learn.n_loaders[0]):
             _dl = []
@@ -126,7 +123,6 @@ def load_all(path='export', dls_fname='dls', model_fname='model', learner_fname=
 
     else:
         loaders = []
-        dls_fnames = []
         for i in range(learn.n_loaders):
             dl = torch.load(path/f'{dls_fname}_{i}.pth', map_location=device, pickle_module=pickle_module)
             dl = dl.new(num_workers=0)
@@ -137,7 +133,7 @@ def load_all(path='export', dls_fname='dls', model_fname='model', learner_fname=
         learn.dls = type(learn.dls)(*loaders, path=learn.dls.path, device=device)
 
 
-    pv(f'Learner loaded:', verbose)
+    pv('Learner loaded:', verbose)
     pv(f"path          = '{path}'", verbose)
     pv(f"dls_fname     = '{dls_fnames}'", verbose)
     pv(f"model_fname   = '{model_fname}.pth'", verbose)
@@ -155,7 +151,7 @@ def plot_metrics(self: Recorder, nrows=None, ncols=None, figsize=None, final_los
     if n_values < 2:
         print('not enough values to plot a chart')
         return
-    
+
     # Prepare results dataframe
     train_metrics = self.train_metrics
     valid_metrics = self.valid_metrics
@@ -164,11 +160,17 @@ def plot_metrics(self: Recorder, nrows=None, ncols=None, figsize=None, final_los
     if not train_metrics and not valid_metrics:
         names = [n for n in names if "loss" in n]
     elif not train_metrics:
-        names = [f"valid_{n}" if (not 'valid' in n and not 'loss' in n) else n for n in names]
+        names = [
+            f"valid_{n}" if 'valid' not in n and 'loss' not in n else n
+            for n in names
+        ]
     elif not valid_metrics:
-        names = [f"train_{n}" if (not 'train' in n and not 'loss' in n) else n for n in names]
+        names = [
+            f"train_{n}" if 'train' not in n and 'loss' not in n else n
+            for n in names
+        ]
     results = pd.DataFrame(metrics, columns=names)
-    
+
     # Final losses
     if final_losses:
         sel_idxs = round(n_values * perc)
@@ -182,14 +184,11 @@ def plot_metrics(self: Recorder, nrows=None, ncols=None, figsize=None, final_los
     # set of metrics names
     names = results.columns
     metric_names = list(dict.fromkeys([n.replace('train_', '').replace('valid_', '') for n in results.columns]))
-     
+
     # Plot
     n = len(metric_names)
     if nrows is None and ncols is None:
-        if n <= 3: 
-            nrows = 1
-        else:
-            nrows = int(math.sqrt(n))
+        nrows = 1 if n <= 3 else int(math.sqrt(n))
         ncols = int(np.ceil(n / nrows))
     elif nrows is None: nrows = int(np.ceil(n / ncols))
     elif ncols is None: ncols = int(np.ceil(n / nrows))

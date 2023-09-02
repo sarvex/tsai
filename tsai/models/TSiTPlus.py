@@ -230,13 +230,13 @@ class TSiTPlus(nn.Sequential):
                 layers += [TokenLayer()]
             elif flatten:
                 layers += [Reshape(-1)]
-                nf = nf * seq_len
+                nf *= seq_len
             else:
                 if concat_pool: nf *= 2
                 layers = [GACP1d(1) if concat_pool else GAP1d(1)]
             if use_bn: layers += [nn.BatchNorm1d(nf)]
             if fc_dropout: layers += [nn.Dropout(fc_dropout)]
-            
+
             # Last layer
             linear = nn.Linear(nf, c_out)
             if bias_init is not None: 

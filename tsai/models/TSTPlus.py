@@ -75,30 +75,44 @@ class _TSTEncoderLayer(Module):
         if not self.pre_norm:
             src = self.norm_ffn(src)
 
-        if self.res_attention:
-            return src, scores
-        else:
-            return src
+        return (src, scores) if self.res_attention else src
 
 # %% ../../nbs/050_models.TSTPlus.ipynb 9
 class _TSTEncoder(Module):
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=None, norm='BatchNorm', attn_dropout=0., dropout=0., activation='gelu', 
                  res_attention=False, n_layers=1, pre_norm=False, store_attn=False):
-        self.layers = nn.ModuleList([_TSTEncoderLayer(q_len, d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm, 
-                                                      attn_dropout=attn_dropout, dropout=dropout, 
-                                                      activation=activation, res_attention=res_attention, 
-                                                      pre_norm=pre_norm, store_attn=store_attn) for i in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [
+                _TSTEncoderLayer(
+                    q_len,
+                    d_model,
+                    n_heads=n_heads,
+                    d_k=d_k,
+                    d_v=d_v,
+                    d_ff=d_ff,
+                    norm=norm,
+                    attn_dropout=attn_dropout,
+                    dropout=dropout,
+                    activation=activation,
+                    res_attention=res_attention,
+                    pre_norm=pre_norm,
+                    store_attn=store_attn,
+                )
+                for _ in range(n_layers)
+            ]
+        )
         self.res_attention = res_attention
 
     def forward(self, src:Tensor, key_padding_mask:Optional[Tensor]=None, attn_mask:Optional[Tensor]=None):
         output = src
         scores = None
-        if self.res_attention:
-            for mod in self.layers: output, scores = mod(output, prev=scores, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
-            return output
-        else:
-            for mod in self.layers: output = mod(output, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
-            return output
+        for mod in self.layers:
+            if self.res_attention:
+                output, scores = mod(output, prev=scores, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
+            else:
+                output = mod(output, key_padding_mask=key_padding_mask, attn_mask=attn_mask)
+
+        return output
 
 # %% ../../nbs/050_models.TSTPlus.ipynb 10
 class _TSTBackbone(Module):
@@ -174,7 +188,7 @@ class _TSTBackbone(Module):
 
     def _positional_encoding(self, pe, learn_pe, q_len, d_model):
         # Positional encoding
-        if pe == None:
+        if pe is None:
             W_pos = torch.empty((q_len, d_model)) # pe = None and learn_pe = False can be used to measure impact of pe
             nn.init.uniform_(W_pos, -0.02, 0.02)
             learn_pe = False
@@ -184,7 +198,7 @@ class _TSTBackbone(Module):
         elif pe == 'zeros': 
             W_pos = torch.empty((q_len, d_model))
             nn.init.uniform_(W_pos, -0.02, 0.02)
-        elif pe == 'normal' or pe == 'gauss':
+        elif pe in ['normal', 'gauss']:
             W_pos = torch.zeros((q_len, 1))
             torch.nn.init.normal_(W_pos, mean=0.0, std=0.1)
         elif pe == 'uniform':
@@ -197,20 +211,20 @@ class _TSTBackbone(Module):
         elif pe == 'sincos': W_pos = PositionalEncoding(q_len, d_model, normalize=True)
         else: raise ValueError(f"{pe} is not a valid pe (positional encoder. Available types: 'gauss'=='normal', \
             'zeros', 'zero', uniform', 'lin1d', 'exp1d', 'lin2d', 'exp2d', 'sincos', None.)")
+            return nn.Parameter(W_pos, requires_grad=learn_pe)
+
         return nn.Parameter(W_pos, requires_grad=learn_pe)
 
     def _key_padding_mask(self, x):
         if self.padding_var is not None:
             mask = TSMaskTensor(x[:, self.padding_var] == 1)            # key_padding_mask: [bs x q_len]
-            return x, mask
         else:
             mask = torch.isnan(x)
             x[mask] = 0
-            if mask.any():
-                mask = TSMaskTensor((mask.float().mean(1)==1).bool())   # key_padding_mask: [bs x q_len]
-                return x, mask
-            else:
+            if not mask.any():
                 return x, None
+            mask = TSMaskTensor((mask.float().mean(1)==1).bool())   # key_padding_mask: [bs x q_len]
+        return x, mask
 
 # %% ../../nbs/050_models.TSTPlus.ipynb 11
 class TSTPlus(nn.Sequential):
@@ -352,7 +366,5 @@ class _Splitter(Module):
             x = [x[:, feat] for feat in self.feat_list]
         else: 
             x = torch.split(x, self.feat_list, dim=1)
-        _out = []
-        for xi, branch in zip(x, self.branches): _out.append(branch(xi))
-        output = torch.cat(_out, dim=1)
-        return output
+        _out = [branch(xi) for xi, branch in zip(x, self.branches)]
+        return torch.cat(_out, dim=1)

@@ -29,10 +29,9 @@ class XResNet1dPlus(nn.Sequential):
         blocks    = self._make_blocks(layers, block_szs, sa, coord, stride, **kwargs)
         backbone = nn.Sequential(*stem, MaxPool(ks=ks, stride=stride, padding=ks//2, ndim=1), *blocks)
         self.head_nf = block_szs[-1]*expansion
-        if custom_head is not None: 
-            if isinstance(custom_head, nn.Module): head = custom_head
-            else: head = custom_head(self.head_nf, n_out, seq_len)
-        else: head = nn.Sequential(AdaptiveAvgPool(sz=1, ndim=1), Flatten(), nn.Dropout(fc_dropout), nn.Linear(block_szs[-1]*expansion, n_out))
+        if custom_head is None: head = nn.Sequential(AdaptiveAvgPool(sz=1, ndim=1), Flatten(), nn.Dropout(fc_dropout), nn.Linear(block_szs[-1]*expansion, n_out))
+        elif isinstance(custom_head, nn.Module): head = custom_head
+        else: head = custom_head(self.head_nf, n_out, seq_len)
         super().__init__(OrderedDict([('backbone', backbone), ('head', head)]))
         self._init_cnn(self)
 

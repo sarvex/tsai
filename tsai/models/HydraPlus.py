@@ -61,15 +61,11 @@ class HydraBackbonePlus(nn.Module):
         if bs <= batch_size:
             return self(X)
         elif split is None:
-            Z = []
-            for i in range(0, bs, batch_size):
-                Z.append(self(X[i:i+batch_size]))
+            Z = [self(X[i:i+batch_size]) for i in range(0, bs, batch_size)]
             return torch.cat(Z)
         else:
-            Z = []
             batches = torch.as_tensor(split).split(batch_size)
-            for i, batch in enumerate(batches):
-                Z.append(self(X[batch]))
+            Z = [self(X[batch]) for batch in batches]
             return torch.cat(Z)
 
     def forward(self, X):
@@ -102,9 +98,7 @@ class HydraBackbonePlus(nn.Module):
                 count_max.scatter_add_(-1, max_indices, max_values)
                 count_min.scatter_add_(-1, min_indices, torch.ones_like(min_values))
 
-                Z.append(count_max)
-                Z.append(count_min)
-
+                Z.extend((count_max, count_min))
         Z = torch.cat(Z, 1).view(bs, -1)
 
         if self.clip:

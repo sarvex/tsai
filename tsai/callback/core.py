@@ -67,10 +67,13 @@ class ShowGraph(Callback):
         if not(self.run): return
         self.nb_batches = []
         self.learn.recorder.loss_idxs = [i for i,n in enumerate(self.learn.recorder.metric_names[1:-1]) if 'loss' in n]
-        _metrics_info = [(i,n) for i,n in enumerate(self.learn.recorder.metric_names[1:-1]) if 'loss' not in n]
-        if len(_metrics_info) > 0: 
+        if _metrics_info := [
+            (i, n)
+            for i, n in enumerate(self.learn.recorder.metric_names[1:-1])
+            if 'loss' not in n
+        ]:
             self.metrics_idxs, self.metrics_names = list(zip(*_metrics_info))
-        else: 
+        else:
             self.metrics_idxs, self.metrics_names = None, None
 
     def after_train(self): self.nb_batches.append(self.train_iter - 1)

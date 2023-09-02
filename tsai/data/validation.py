@@ -48,8 +48,7 @@ def leakage_finder(*splits, verbose=True):
     overlaps = 0
     for i in range(len(splits)):
         for j in range(i + 1, len(splits)):
-            overlap = check_overlap(splits[i], splits[j])
-            if overlap: 
+            if overlap := check_overlap(splits[i], splits[j]):
                 pv(f'overlap between splits [{i}, {j}] {overlap}', verbose)
                 overlaps += 1
     assert overlaps == 0, 'Please, review your splits!'
@@ -72,11 +71,11 @@ def TrainValidTestSplitter(n_splits:int=1, valid_size:Union[float, int]=0.2, tes
                            stratify:bool=True, balance:bool=False, strategy:str="oversample", shuffle:bool=True, 
                            random_state:Union[None, int]=None, verbose:bool=False, **kwargs):
     "Split `items` into random train, valid (and test optional) subsets."
-    
+
     if not shuffle and stratify and not train_only: 
         pv('stratify set to False because shuffle=False. If you want to stratify set shuffle=True', verbose)
         stratify = False
-        
+
     def _inner(o, **kwargs):
         if stratify:
             _, unique_counts = np.unique(o, return_counts=True)
@@ -105,7 +104,7 @@ def TrainValidTestSplitter(n_splits:int=1, valid_size:Union[float, int]=0.2, tes
                 valid_ = L(L([train]) * n_splits) if n_splits > 1 else train
                 test_ = L(L([test]) * n_splits) if n_splits > 1 else test
                 if n_splits > 1: 
-                    return [split for split in itemify(train_, valid_, test_)]
+                    return list(itemify(train_, valid_, test_))
                 else: 
                     return train_, valid_, test_
             elif n_splits > 1: 
@@ -123,7 +122,7 @@ def TrainValidTestSplitter(n_splits:int=1, valid_size:Union[float, int]=0.2, tes
                     train_.append(L(L(train_valid)[train]))
                     valid_.append(L(L(train_valid)[valid]))
                 test_ = L(L([test]) * n_splits)
-                return [split for split in itemify(train_, valid_, test_)]
+                return list(itemify(train_, valid_, test_))
             else:
                 train, valid = train_test_split(range(len(train_valid)), test_size=vs, random_state=random_state, 
                                                 stratify=o[train_valid] if stratify_ else None, shuffle=shuffle, **kwargs)
@@ -141,10 +140,7 @@ def TrainValidTestSplitter(n_splits:int=1, valid_size:Union[float, int]=0.2, tes
                 if shuffle: train = random_shuffle(train, random_state)
                 train_ = L(L([train]) * n_splits) if n_splits > 1 else train
                 valid_ = L(L([train]) * n_splits) if n_splits > 1 else train
-                if n_splits > 1: 
-                    return [split for split in itemify(train_, valid_)]
-                else: 
-                    return (train_, valid_)
+                return list(itemify(train_, valid_)) if n_splits > 1 else (train_, valid_)
             elif n_splits > 1: 
                 if stratify_: splits = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state).split(np.arange(len(o)), o)
                 else: splits = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state).split(np.arange(len(o)))
@@ -159,22 +155,23 @@ def TrainValidTestSplitter(n_splits:int=1, valid_size:Union[float, int]=0.2, tes
                     if not isinstance(valid, (list, L)):  valid = valid.tolist()
                     train_.append(L(train))
                     valid_.append(L(L(valid)))
-                return [split for split in itemify(train_, valid_)]
+                return list(itemify(train_, valid_))
             else:
                 train, valid = train_test_split(range(len(o)), test_size=vs, random_state=random_state, stratify=o if stratify_ else None, 
                                                 shuffle=shuffle, **kwargs)
                 train, valid = toL(train), toL(valid)
                 if balance: train = train[balance_idx(o[train], random_state=random_state, strategy=strategy)]
                 return train, valid
+
     return _inner
 
 # %% ../../nbs/003_data.validation.ipynb 13
 def plot_splits(splits):
     _max = 0
     _splits = 0
-    for i, split in enumerate(splits):
+    for split in splits:
         if is_listy(split[0]):
-            for j, s in enumerate(split):
+            for s in split:
                 _max = max(_max, array(s).max())
                 _splits += 1
         else: 
@@ -195,7 +192,6 @@ def plot_splits(splits):
         v = np.ones((len(_splits), _max + 1))
         plt.pcolormesh(v, color='blue')
         legend_elements = [Patch(facecolor='blue', label='Train')]
-        plt.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left')
     else: 
         colors = L(['gainsboro', 'blue', 'orange', 'limegreen'])[vals]
         cmap = LinearSegmentedColormap.from_list('', colors)
@@ -205,7 +201,7 @@ def plot_splits(splits):
             Patch(facecolor='blue', label='Train'),
             Patch(facecolor='orange', label='Valid'),
             Patch(facecolor='limegreen', label='Test')])[vals]
-        plt.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.title('Split distribution')
     plt.yticks(ticks=np.arange(.5, len(_splits)+.5, 1.0), labels=np.arange(1, len(_splits)+1, 1.0).astype(int))
     plt.gca().invert_yaxis()
@@ -235,24 +231,24 @@ def get_splits(o, n_splits:int=1, valid_size:float=0.2, test_size:float=0., trai
     if balance: stratify = True
     splits = TrainValidTestSplitter(n_splits, valid_size=valid_size, test_size=test_size, train_only=train_only, stratify=stratify, 
                                     balance=balance, strategy=strategy, shuffle=shuffle, random_state=random_state, verbose=verbose)(o)
-    if check_splits:
-        if train_only or (n_splits == 1 and valid_size == 0): print('valid == train')
-        elif n_splits > 1: 
+    if train_only or (n_splits == 1 and valid_size == 0):
+        if check_splits: print('valid == train')
+    elif n_splits > 1:
+        if check_splits: 
             for i in range(n_splits): 
                 leakage_finder([*splits[i]], verbose=True)
-                cum_len = 0
-                for split in splits[i]: cum_len += len(split)
+                cum_len = sum(len(split) for split in splits[i])
                 if not balance: assert len(o) == cum_len, f'len(o)={len(o)} while cum_len={cum_len}'
-        else: 
-            leakage_finder([splits], verbose=True)
-            cum_len = 0
-            if not isinstance(splits[0], Integral):
-                for split in splits: cum_len += len(split)
-            else: cum_len += len(splits)
-            if not balance: assert len(o) == cum_len, f'len(o)={len(o)} while cum_len={cum_len}'
+    elif check_splits: 
+        leakage_finder([splits], verbose=True)
+        cum_len = 0
+        if isinstance(splits[0], Integral): cum_len += len(splits)
+        else:
+            for split in splits: cum_len += len(split)
+        if not balance: assert len(o) == cum_len, f'len(o)={len(o)} while cum_len={cum_len}'
     if train_size is not None and train_size != 1: # train_size=1 legacy
+        splits = list(splits)
         if n_splits > 1:
-            splits = list(splits)
             for i in range(n_splits): 
                 splits[i] = list(splits[i])
                 if isinstance(train_size, Integral):
@@ -264,9 +260,7 @@ def get_splits(o, n_splits:int=1, valid_size:float=0.2, test_size:float=0., trai
                     if valid_size != 0: splits[i][1] = splits[i][0]
                     if test_size != 0: splits[i][2] = splits[i][0]
                 splits[i] = tuple(splits[i])
-            splits = tuple(splits)
         else: 
-            splits = list(splits)
             if isinstance(train_size, Integral):
                 n_train_samples = train_size  
             elif train_size > 0 and train_size < 1: 
@@ -275,7 +269,7 @@ def get_splits(o, n_splits:int=1, valid_size:float=0.2, test_size:float=0., trai
             if train_only:
                 if valid_size != 0: splits[1] = splits[0]
                 if test_size != 0: splits[2] = splits[0]
-            splits = tuple(splits)
+        splits = tuple(splits)
     if show_plot: plot_splits(splits)
     return splits
 
@@ -318,43 +312,31 @@ def get_walk_forward_splits(
 
     end = 0
     all_idxs = np.arange(len(o))
-    for n in range(n_splits):
-        if valid_size > 0 and test_size > 0:
-            if test_after_valid:
-                test_idxs.append(L(all_idxs[-test_size:].tolist()))
-                all_idxs = all_idxs[:-test_size]
+    for _ in range(n_splits):
+        if valid_size > 0:
+            if test_size > 0:
+                if test_after_valid:
+                    test_idxs.append(L(all_idxs[-test_size:].tolist()))
+                    all_idxs = all_idxs[:-test_size]
+                    valid_idxs.append(L(all_idxs[-valid_size:].tolist()))
+                    all_idxs = all_idxs[:-valid_size]
+                else:
+                    valid_test_idxs = all_idxs[-test_size - valid_size:]
+                    np.random.seed(random_state)
+                    valid_test_idxs = np.random.permutation(valid_test_idxs)
+                    valid_idxs.append(L(valid_test_idxs[:valid_size]))
+                    test_idxs.append(L(valid_test_idxs[valid_size:]))
+                    all_idxs = all_idxs[:-test_size - valid_size]
+            else:
                 valid_idxs.append(L(all_idxs[-valid_size:].tolist()))
                 all_idxs = all_idxs[:-valid_size]
-                if gap > 0:
-                    all_idxs = all_idxs[:-gap]
-                if anchored:
-                    train_idxs.append(L(all_idxs.tolist()))
-                else:
-                    train_idxs.append(L(all_idxs[-train_size:].tolist()))
-            else:
-                valid_test_idxs = all_idxs[-test_size - valid_size:]
-                np.random.seed(random_state)
-                valid_test_idxs = np.random.permutation(valid_test_idxs)
-                valid_idxs.append(L(valid_test_idxs[:valid_size]))
-                test_idxs.append(L(valid_test_idxs[valid_size:]))
-                all_idxs = all_idxs[:-test_size - valid_size]
-                if gap > 0:
-                    all_idxs = all_idxs[:-gap]
-                if anchored:
-                    train_idxs.append(L(all_idxs.tolist()))
-                else:
-                    train_idxs.append(L(all_idxs[-train_size:].tolist()))
-        elif valid_size > 0:
-            valid_idxs.append(L(all_idxs[-valid_size:].tolist()))
-            all_idxs = all_idxs[:-valid_size]
-            test_idxs.append(L([]))
+                test_idxs.append(L([]))
             if gap > 0:
                 all_idxs = all_idxs[:-gap]
             if anchored:
                 train_idxs.append(L(all_idxs.tolist()))
             else:
                 train_idxs.append(L(all_idxs[-train_size:].tolist()))
-
     splits = []
     for n in range(n_splits):
         if valid_size > 0 and test_size > 0:

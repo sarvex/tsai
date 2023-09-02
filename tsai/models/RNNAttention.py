@@ -119,8 +119,21 @@ class _TSTEncoderLayer(Module):
 class _TSTEncoder(Module):
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=None, dropout=0.1, activation='gelu', n_layers=1):
         
-        self.layers = nn.ModuleList([_TSTEncoderLayer(q_len, d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, dropout=dropout, 
-                                                            activation=activation) for i in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [
+                _TSTEncoderLayer(
+                    q_len,
+                    d_model,
+                    n_heads=n_heads,
+                    d_k=d_k,
+                    d_v=d_v,
+                    d_ff=d_ff,
+                    dropout=dropout,
+                    activation=activation,
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
     def forward(self, src):
         output = src
@@ -163,11 +176,11 @@ class _RNNAttention_Base(Module):
             bs (batch size) x nvars (aka features, variables, dimensions, channels) x seq_len (aka time steps)
         """        
         q_len = seq_len
-        
+
         # RNN
         self.rnn = self._cell(c_in, hidden_size, num_layers=rnn_layers, bias=bias, batch_first=True, dropout=rnn_dropout, 
                               bidirectional=bidirectional)
-        
+
         # Attention Encoder
         d_model = hidden_size * (1 + bidirectional)
         self.encoder = _TSTEncoder(q_len, d_model, n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, dropout=encoder_dropout, activation=act, n_layers=encoder_layers)
@@ -175,11 +188,11 @@ class _RNNAttention_Base(Module):
 
         # Head
         self.head_nf = q_len * d_model
-        if custom_head is not None: 
-            if isinstance(custom_head, nn.Module): self.head = custom_head
-            else: self.head = custom_head(d_model, c_out, seq_len)
-        else:
+        if custom_head is None:
             self.head = self.create_head(self.head_nf, c_out, act=act, fc_dropout=fc_dropout, y_range=y_range)
+
+        elif isinstance(custom_head, nn.Module): self.head = custom_head
+        else: self.head = custom_head(d_model, c_out, seq_len)
         
 
     def create_head(self, nf, c_out, act="gelu", fc_dropout=0., y_range=None):

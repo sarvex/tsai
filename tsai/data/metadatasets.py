@@ -16,7 +16,7 @@ class TSMetaDataset():
     def __init__(self, dataset_list, **kwargs):
         if not is_listy(dataset_list): dataset_list = [dataset_list]
         self.datasets = dataset_list
-        self.split = kwargs['split'] if 'split' in kwargs else None            
+        self.split = kwargs.get('split', None)
         self.mapping = self._mapping()
         if hasattr(dataset_list[0], 'loss_func'): 
             self.loss_func =  dataset_list[0].loss_func
@@ -27,7 +27,7 @@ class TSMetaDataset():
         if self.split is not None: 
             return len(self.split)
         else:
-            return sum([len(ds) for ds in self.datasets])
+            return sum(len(ds) for ds in self.datasets)
 
     def __getitem__(self, idx):
         if self.datasets:

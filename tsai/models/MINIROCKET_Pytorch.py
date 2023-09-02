@@ -69,7 +69,7 @@ class MiniRocketFeatures(nn.Module):
         _features = []
         for i, (dilation, padding) in enumerate(zip(self.dilations, self.padding)):
             _padding1 = i%2
-            
+
             # Convolution
             C = F.conv1d(x, self.kernels, padding=padding, dilation=dilation, groups=self.c_in)
             if self.c_in > 1: # multivariate
@@ -82,21 +82,28 @@ class MiniRocketFeatures(nn.Module):
             if not self.prefit or self.fitting:
                 num_features_this_dilation = self.num_features_per_dilation[i]
                 bias_this_dilation = self._get_bias(C, num_features_this_dilation)
-                setattr(self, f'biases_{i}', bias_this_dilation)        
+                setattr(self, f'biases_{i}', bias_this_dilation)
                 if self.fitting:
                     if i < self.num_dilations - 1:
                         continue
-                    else:
-                        self.prefit = torch.BoolTensor([True])
-                        return
+                    self.prefit = torch.BoolTensor([True])
+                    return
                 elif i == self.num_dilations - 1:
                     self.prefit = torch.BoolTensor([True])
             else:
                 bias_this_dilation = getattr(self, f'biases_{i}')
-            
-            # Features
-            _features.append(self._get_PPVs(C[:, _padding1::2], bias_this_dilation[_padding1::2]))
-            _features.append(self._get_PPVs(C[:, 1-_padding1::2, padding:-padding], bias_this_dilation[1-_padding1::2]))
+
+            _features.extend(
+                (
+                    self._get_PPVs(
+                        C[:, _padding1::2], bias_this_dilation[_padding1::2]
+                    ),
+                    self._get_PPVs(
+                        C[:, 1 - _padding1 :: 2, padding:-padding],
+                        bias_this_dilation[1 - _padding1 :: 2],
+                    ),
+                )
+            )
         return torch.cat(_features, dim=1)           
 
     def _get_PPVs(self, C, bias):
@@ -110,7 +117,7 @@ class MiniRocketFeatures(nn.Module):
         multiplier = num_features_per_kernel / true_max_dilations_per_kernel
         max_exponent = np.log2((input_length - 1) / (9 - 1))
         dilations, num_features_per_dilation = \
-        np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base = 2).astype(np.int32), return_counts = True)
+            np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base = 2).astype(np.int32), return_counts = True)
         num_features_per_dilation = (num_features_per_dilation * multiplier).astype(np.int32)
         remainder = num_features_per_kernel - num_features_per_dilation.sum()
         i = 0
@@ -122,8 +129,9 @@ class MiniRocketFeatures(nn.Module):
         self.num_dilations = len(dilations)
         self.dilations = dilations
         self.padding = []
-        for i, dilation in enumerate(dilations): 
-            self.padding.append((((self.kernel_size - 1) * dilation) // 2))
+        self.padding.extend(
+            ((self.kernel_size - 1) * dilation) // 2 for dilation in dilations
+        )
 
     def _set_channel_combinations(self, num_channels):
         num_combinations = self.num_kernels * self.num_dilations
@@ -144,9 +152,12 @@ class MiniRocketFeatures(nn.Module):
     def _get_bias(self, C, num_features_this_dilation):
         np.random.seed(self.random_state)
         idxs = np.random.choice(C.shape[0], self.num_kernels)
-        samples = C[idxs].diagonal().T 
-        biases = torch.quantile(samples, self._get_quantiles(num_features_this_dilation).to(C.device), dim=1).T
-        return biases
+        samples = C[idxs].diagonal().T
+        return torch.quantile(
+            samples,
+            self._get_quantiles(num_features_this_dilation).to(C.device),
+            dim=1,
+        ).T
 
 MRF = MiniRocketFeatures
 
@@ -157,12 +168,9 @@ def get_minirocket_features(o, model, chunksize=1024, use_cuda=None, to_np=True)
     device = torch.device(torch.cuda.current_device()) if use else torch.device('cpu')
     model = model.to(device)
     if isinstance(o, np.ndarray): o = torch.from_numpy(o).to(device)
-    _features = []
-    for oi in torch.split(o, chunksize): 
-        _features.append(model(oi))
+    _features = [model(oi) for oi in torch.split(o, chunksize)]
     features = torch.cat(_features).unsqueeze(-1)
-    if to_np: return features.cpu().numpy()
-    else: return features
+    return features.cpu().numpy() if to_np else features
 
 # %% ../../nbs/056_models.MINIROCKET_Pytorch.ipynb 6
 class MiniRocketHead(nn.Sequential):

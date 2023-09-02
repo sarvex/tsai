@@ -25,10 +25,10 @@ def get_ts_features(X:Union[np.ndarray, torch.Tensor], y:Union[None, np.ndarray,
         from tsfresh.feature_extraction.settings import ComprehensiveFCParameters, MinimalFCParameters, EfficientFCParameters
     except ImportError:
         raise ImportError("You need to install tsfresh to be able to import tsai.data.features")
-    
+
     df = to_tsfresh_df(X)
     n_jobs = ifnone(n_jobs, defaults.cpus)
-    if 'default_fc_parameters' in kwargs.keys(): default_fc_parameters = default_fc_parameters 
+    if 'default_fc_parameters' in kwargs: default_fc_parameters = default_fc_parameters
     elif features == 'min': default_fc_parameters = MinimalFCParameters()
     elif features == 'efficient': default_fc_parameters = EfficientFCParameters()
     elif features == 'all': default_fc_parameters = ComprehensiveFCParameters()

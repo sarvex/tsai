@@ -92,10 +92,7 @@ class _MLP(nn.Module):
         self.shortcut = nn.Linear(dims[0], dims[-1]) if skip else None
 
     def forward(self, x):
-        if self.shortcut is not None: 
-            return self.mlp(x) + self.shortcut(x)
-        else:
-            return self.mlp(x)
+        return self.mlp(x) if self.shortcut is None else self.mlp(x) + self.shortcut(x)
 
 
 class _ScaledDotProductAttention(nn.Module):
@@ -126,8 +123,7 @@ class _ScaledDotProductAttention(nn.Module):
         # MatMul (attn, v)
         context = torch.matmul(attn, v)                                # context: [bs x n_heads x q_len x d_v]
 
-        if self.res_attention: return context, attn, scores
-        else: return context, attn
+        return (context, attn, scores) if self.res_attention else (context, attn)
 
 
 class _MultiheadAttention(nn.Module):
@@ -173,8 +169,7 @@ class _MultiheadAttention(nn.Module):
         # Linear
         output = self.W_O(context)                                                           # context: [bs x q_len x d_model]
 
-        if self.res_attention: return output, attn, scores
-        else: return output, attn                                                            # output: [bs x q_len x d_model]
+        return (output, attn, scores) if self.res_attention else (output, attn)
 
         
 class _TabEncoderLayer(nn.Module):
@@ -222,10 +217,7 @@ class _TabEncoderLayer(nn.Module):
         src = src + self.dropout_ffn(src2) # Add: residual connection with residual dropout
         src = self.layernorm_ffn(src) # Norm: layernorm
 
-        if self.res_attention:
-            return src, scores
-        else:
-            return src
+        return (src, scores) if self.res_attention else src
 
     def _get_activation_fn(self, activation):
         if callable(activation): return activation()
@@ -237,19 +229,34 @@ class _TabEncoderLayer(nn.Module):
 class _TabEncoder(nn.Module):
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=None, res_dropout=0.1, activation='gelu', res_attention=False, n_layers=1):
         super().__init__()
-        self.layers = nn.ModuleList([_TabEncoderLayer(q_len, d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, res_dropout=res_dropout, 
-                                                            activation=activation, res_attention=res_attention) for i in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [
+                _TabEncoderLayer(
+                    q_len,
+                    d_model,
+                    n_heads=n_heads,
+                    d_k=d_k,
+                    d_v=d_v,
+                    d_ff=d_ff,
+                    res_dropout=res_dropout,
+                    activation=activation,
+                    res_attention=res_attention,
+                )
+                for _ in range(n_layers)
+            ]
+        )
         self.res_attention = res_attention
 
     def forward(self, src, attn_mask=None):
         output = src
         scores = None
-        if self.res_attention:
-            for mod in self.layers: output, scores = mod(output, prev=scores, attn_mask=attn_mask)
-            return output
-        else:
-            for mod in self.layers: output = mod(output, attn_mask=attn_mask)
-            return output
+        for mod in self.layers:
+            if self.res_attention:
+                output, scores = mod(output, prev=scores, attn_mask=attn_mask)
+            else:
+                output = mod(output, attn_mask=attn_mask)
+
+        return output
 
         
 class TabTransformer(nn.Module):

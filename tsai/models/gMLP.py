@@ -20,8 +20,7 @@ class _SpatialGatingUnit(nn.Module):
         u, v = x.chunk(2, dim=-1)
         v = self.norm(v)
         v = self.spatial_proj(v)
-        out = u * v
-        return out
+        return u * v
 
 
 class _gMLPBlock(nn.Module):
@@ -38,8 +37,7 @@ class _gMLPBlock(nn.Module):
         x = F.gelu(self.channel_proj1(x))
         x = self.sgu(x)
         x = self.channel_proj2(x)
-        out = x + residual
-        return out
+        return x + residual
 
 
 class _gMLPBackbone(nn.Module):
@@ -78,5 +76,4 @@ class gMLP(_gMLPBackbone):
         patches = patches.view(batch_size, -1, num_channels)
         embedding = self.model(patches)
         embedding = embedding.mean(dim=1)
-        out = self.head(embedding)
-        return out
+        return self.head(embedding)

@@ -119,8 +119,21 @@ class _TSTEncoderLayer(Module):
 class _TSTEncoder(Module):
     def __init__(self, q_len, d_model, n_heads, d_k=None, d_v=None, d_ff=None, dropout=0.1, activation='gelu', n_layers=1):
         
-        self.layers = nn.ModuleList([_TSTEncoderLayer(q_len, d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, dropout=dropout, 
-                                                            activation=activation) for i in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [
+                _TSTEncoderLayer(
+                    q_len,
+                    d_model,
+                    n_heads=n_heads,
+                    d_k=d_k,
+                    d_v=d_v,
+                    d_ff=d_ff,
+                    dropout=dropout,
+                    activation=activation,
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
     def forward(self, src):
         output = src

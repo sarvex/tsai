@@ -187,7 +187,5 @@ class _Splitter(Module):
             x = [x[:, feat] for feat in self.feat_list]
         else: 
             x = torch.split(x, self.feat_list, dim=1)
-        _out = []
-        for xi, branch in zip(x, self.branches): _out.append(branch(xi))
-        output = torch.cat(_out, dim=1)
-        return output
+        _out = [branch(xi) for xi, branch in zip(x, self.branches)]
+        return torch.cat(_out, dim=1)

@@ -114,20 +114,24 @@ class MultiRocketFeaturesPlus(nn.Module):
                 if self.fitting:
                     if i < self.num_dilations - 1:
                         continue
-                    else:
-                        self.prefit = torch.BoolTensor([True])
-                        return
+                    self.prefit = torch.BoolTensor([True])
+                    return
                 elif i == self.num_dilations - 1:
                     self.prefit = torch.BoolTensor([True])
             else:
                 bias_this_dilation = getattr(self, f'biases_{i}')
 
-            # Features
-            _features.append(self.apply_pooling_ops(
-                C[:, _padding1::2], bias_this_dilation[_padding1::2]))
-            _features.append(self.apply_pooling_ops(
-                C[:, 1-_padding1::2, padding:-padding], bias_this_dilation[1-_padding1::2]))
-
+            _features.extend(
+                (
+                    self.apply_pooling_ops(
+                        C[:, _padding1::2], bias_this_dilation[_padding1::2]
+                    ),
+                    self.apply_pooling_ops(
+                        C[:, 1 - _padding1 :: 2, padding:-padding],
+                        bias_this_dilation[1 - _padding1 :: 2],
+                    ),
+                )
+            )
         return torch.cat(_features, dim=1)
 
     def fit(self, X, chunksize=None):
@@ -154,7 +158,6 @@ class MultiRocketFeaturesPlus(nn.Module):
         mipv = _MIPV(C, pos_vals).flatten(1)
         lspv = _LPVV(pos_vals).flatten(1)
         return torch.cat((ppv, mpv, mipv, lspv), dim=1)
-        return torch.cat((ppv, rspv, mipv, lspv), dim=1)
 
     def set_dilations(self, input_length):
         num_features_per_kernel = self.num_features // self.num_kernels
@@ -163,7 +166,7 @@ class MultiRocketFeaturesPlus(nn.Module):
         multiplier = num_features_per_kernel / true_max_dilations_per_kernel
         max_exponent = np.log2((input_length - 1) / (self.kernel_size - 1))
         dilations, num_features_per_dilation = \
-            np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(
+                np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(
                 np.int32), return_counts=True)
         num_features_per_dilation = (
             num_features_per_dilation * multiplier).astype(np.int32)
@@ -177,8 +180,9 @@ class MultiRocketFeaturesPlus(nn.Module):
         self.num_dilations = len(dilations)
         self.dilations = dilations
         self.padding = []
-        for i, dilation in enumerate(dilations):
-            self.padding.append((((self.kernel_size - 1) * dilation) // 2))
+        self.padding.extend(
+            ((self.kernel_size - 1) * dilation) // 2 for dilation in dilations
+        )
 
     def set_channel_combinations(self, num_channels, max_num_channels):
         num_combinations = self.num_kernels * self.num_dilations
@@ -207,9 +211,11 @@ class MultiRocketFeaturesPlus(nn.Module):
     def get_bias(self, C, num_features_this_dilation):
         isp = torch.randint(C.shape[0], (self.num_kernels,))
         samples = C[isp].diagonal().T
-        biases = torch.quantile(samples, self.get_quantiles(
-            num_features_this_dilation).to(C.device), dim=1).T
-        return biases
+        return torch.quantile(
+            samples,
+            self.get_quantiles(num_features_this_dilation).to(C.device),
+            dim=1,
+        ).T
 
     def get_indices(self, kernel_size, max_num_kernels):
         num_pos_values = math.ceil(kernel_size / 3)
@@ -246,14 +252,11 @@ class MultiRocketBackbonePlus(nn.Module):
         self.use_diff = use_diff
         
     def forward(self, x):
-        if self.use_diff:
-            x_features = self.branch_x(x)
-            x_diff_features = self.branch_x(torch.diff(x))
-            output = torch.cat([x_features, x_diff_features], dim=-1)
-            return output
-        else:
-            output = self.branch_x(x)
-            return output
+        if not self.use_diff:
+            return self.branch_x(x)
+        x_features = self.branch_x(x)
+        x_diff_features = self.branch_x(torch.diff(x))
+        return torch.cat([x_features, x_diff_features], dim=-1)
 
 # %% ../../nbs/076_models.MultiRocketPlus.ipynb 8
 class MultiRocketPlus(nn.Sequential):

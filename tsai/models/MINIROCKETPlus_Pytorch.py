@@ -71,20 +71,24 @@ class MiniRocketFeaturesPlus(nn.Module):
                 if self.fitting:
                     if i < self.num_dilations - 1:
                         continue
-                    else:
-                        self.prefit = torch.BoolTensor([True])
-                        return
+                    self.prefit = torch.BoolTensor([True])
+                    return
                 elif i == self.num_dilations - 1:
                     self.prefit = torch.BoolTensor([True])
             else:
                 bias_this_dilation = getattr(self, f'biases_{i}')
 
-            # Features
-            _features.append(self.get_PPVs(
-                C[:, _padding1::2], bias_this_dilation[_padding1::2]))
-            _features.append(self.get_PPVs(
-                C[:, 1-_padding1::2, padding:-padding], bias_this_dilation[1-_padding1::2]))
-
+            _features.extend(
+                (
+                    self.get_PPVs(
+                        C[:, _padding1::2], bias_this_dilation[_padding1::2]
+                    ),
+                    self.get_PPVs(
+                        C[:, 1 - _padding1 :: 2, padding:-padding],
+                        bias_this_dilation[1 - _padding1 :: 2],
+                    ),
+                )
+            )
         return torch.cat(_features, dim=1)
 
     def fit(self, X, chunksize=None):
@@ -120,7 +124,7 @@ class MiniRocketFeaturesPlus(nn.Module):
         multiplier = num_features_per_kernel / true_max_dilations_per_kernel
         max_exponent = np.log2((input_length - 1) / (self.kernel_size - 1))
         dilations, num_features_per_dilation = \
-            np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(
+                np.unique(np.logspace(0, max_exponent, true_max_dilations_per_kernel, base=2).astype(
                 np.int32), return_counts=True)
         num_features_per_dilation = (
             num_features_per_dilation * multiplier).astype(np.int32)
@@ -134,8 +138,9 @@ class MiniRocketFeaturesPlus(nn.Module):
         self.num_dilations = len(dilations)
         self.dilations = dilations
         self.padding = []
-        for i, dilation in enumerate(dilations):
-            self.padding.append((((self.kernel_size - 1) * dilation) // 2))
+        self.padding.extend(
+            ((self.kernel_size - 1) * dilation) // 2 for dilation in dilations
+        )
 
     def set_channel_combinations(self, num_channels, max_num_channels):
         num_combinations = self.num_kernels * self.num_dilations
@@ -164,9 +169,11 @@ class MiniRocketFeaturesPlus(nn.Module):
     def get_bias(self, C, num_features_this_dilation):
         isp = torch.randint(C.shape[0], (self.num_kernels,))
         samples = C[isp].diagonal().T
-        biases = torch.quantile(samples, self.get_quantiles(
-            num_features_this_dilation).to(C.device), dim=1).T
-        return biases
+        return torch.quantile(
+            samples,
+            self.get_quantiles(num_features_this_dilation).to(C.device),
+            dim=1,
+        ).T
 
     def get_indices(self, kernel_size, max_num_kernels):
         num_pos_values = math.ceil(kernel_size / 3)
@@ -230,14 +237,9 @@ def get_minirocket_features(o, model, chunksize=1024, use_cuda=None, to_np=False
     model = model.to(device)
     if isinstance(o, np.ndarray):
         o = torch.from_numpy(o).to(device)
-    _features = []
-    for oi in torch.split(o, chunksize):
-        _features.append(model(oi))
+    _features = [model(oi) for oi in torch.split(o, chunksize)]
     features = torch.cat(_features).unsqueeze(-1)
-    if to_np:
-        return features.cpu().numpy()
-    else:
-        return features
+    return features.cpu().numpy() if to_np else features
 
 # %% ../../nbs/057_models.MINIROCKETPlus_Pytorch.ipynb 7
 class MiniRocketHead(nn.Sequential):
@@ -288,9 +290,7 @@ class InceptionRocketFeaturesPlus(nn.Module):
             m.fit(X, chunksize=chunksize)
 
     def forward(self, x):
-        features = []
-        for m in self.minirocketfeatures:
-            features.append(m(x))
+        features = [m(x) for m in self.minirocketfeatures]
         return torch.cat(features, dim=1)
 
     def _get_n_comb(self, kernel_size):
@@ -300,8 +300,7 @@ class InceptionRocketFeaturesPlus(nn.Module):
     def _get_n_feat_per_ks(self, num_features):
         combs = np.array([self._get_n_comb(ks) for ks in self.kernel_sizes])
         num_features_per_kernel = num_features // np.sum(combs)
-        num_features_per_kernel_size = num_features_per_kernel * combs
-        return num_features_per_kernel_size
+        return num_features_per_kernel * combs
 
 # %% ../../nbs/057_models.MINIROCKETPlus_Pytorch.ipynb 16
 class InceptionRocketPlus(nn.Sequential):

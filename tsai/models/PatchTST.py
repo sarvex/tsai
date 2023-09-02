@@ -163,34 +163,31 @@ class _MultiheadAttention(nn.Module):
 class Flatten_Head(nn.Module):
     def __init__(self, individual, n_vars, nf, pred_dim):
         super().__init__()
-        
+
         if isinstance(pred_dim, (tuple, list)):
             pred_dim = pred_dim[-1]
         self.individual = individual
         self.n = n_vars if individual else 1
         self.nf, self.pred_dim = nf, pred_dim
-        
+
         if individual:
             self.layers = nn.ModuleList()
-            for i in range(self.n):
+            for _ in range(self.n):
                 self.layers.append(nn.Sequential(nn.Flatten(start_dim=-2), nn.Linear(nf, pred_dim)))
         else:
             self.layer = nn.Sequential(nn.Flatten(start_dim=-2), nn.Linear(nf, pred_dim))
             
-    def forward(self, x:Tensor): 
+    def forward(self, x:Tensor):
         """
         Args:
             x: [bs x nvars x d_model x n_patch]
             output: [bs x nvars x pred_dim]
         """
-        if self.individual: 
-            x_out = []
-            for i, layer in enumerate(self.layers):
-                x_out.append(layer(x[:, i]))
-            x = torch.stack(x_out, dim=1) 
-            return x
-        else: 
+        if not self.individual:
             return self.layer(x)
+        x_out = [layer(x[:, i]) for i, layer in enumerate(self.layers)]
+        x = torch.stack(x_out, dim=1)
+        return x
 
 # %% ../../nbs/050b_models.PatchTST.ipynb 8
 class _TSTiEncoderLayer(nn.Module):
@@ -231,7 +228,7 @@ class _TSTiEncoderLayer(nn.Module):
 
 
     def forward(self, src:Tensor, prev:Optional[Tensor]=None):
-        
+
         """
         Args:
             src: [bs x q_len x d_model]
@@ -262,10 +259,7 @@ class _TSTiEncoderLayer(nn.Module):
         if not self.pre_norm:
             src = self.norm_ffn(src)
 
-        if self.res_attention:      
-            return src, scores
-        else:
-            return src
+        return (src, scores) if self.res_attention else src
 
 # %% ../../nbs/050b_models.PatchTST.ipynb 9
 class _TSTiEncoder(nn.Module):  #i means channel-independent
@@ -274,10 +268,10 @@ class _TSTiEncoder(nn.Module):  #i means channel-independent
                  res_attention=True, pre_norm=False):
         
         super().__init__()
-        
+
         self.patch_num = patch_num
         self.patch_len = patch_len
-        
+
         # Input encoding
         q_len = patch_num
         self.W_P = nn.Linear(patch_len, d_model) # Eq 1: projection of feature vectors onto a d-dim vector space
@@ -292,10 +286,26 @@ class _TSTiEncoder(nn.Module):  #i means channel-independent
         self.dropout = nn.Dropout(dropout)
 
         # Encoder
-        self.layers = nn.ModuleList([_TSTiEncoderLayer(q_len, d_model, n_heads=n_heads, d_k=d_k, d_v=d_v, d_ff=d_ff, norm=norm,
-                                                      attn_dropout=attn_dropout, dropout=dropout,
-                                                      activation=act, res_attention=res_attention,
-                                                      pre_norm=pre_norm, store_attn=store_attn) for i in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [
+                _TSTiEncoderLayer(
+                    q_len,
+                    d_model,
+                    n_heads=n_heads,
+                    d_k=d_k,
+                    d_v=d_v,
+                    d_ff=d_ff,
+                    norm=norm,
+                    attn_dropout=attn_dropout,
+                    dropout=dropout,
+                    activation=act,
+                    res_attention=res_attention,
+                    pre_norm=pre_norm,
+                    store_attn=store_attn,
+                )
+                for _ in range(n_layers)
+            ]
+        )
         self.res_attention = res_attention
 
         
